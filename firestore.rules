@@ -17,18 +17,28 @@ service cloud.firestore {
       return request.auth.uid in data.get('shared_with_uids', []);
     }
 
-    // Usuários: Dono pode ler/escrever seu próprio perfil
+    // Usuários: Dono pode ler/escrever seu próprio perfil. 
+    // Membros de uma mesma família podem ler o perfil uns dos outros.
     match /users/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if isAuthenticated(); // Necessário para a consulta de membros da família
+      allow write: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        (
+          resource.data.family_id != null &&
+          get(/databases/$(database)/documents/families/$(resource.data.family_id)).data.owner_id == request.auth.uid &&
+          request.resource.data.family_id == null
+        )
+      );
     }
     
-    // Famílias: Membros podem ler, Dono pode escrever, Convidados podem "entrar"
+    // Famílias: Membros podem ler, Dono pode escrever, Convidados podem "entrar", Membros podem "sair"
     match /families/{familyId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.owner_id || request.auth.uid in resource.data.member_ids);
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.owner_id || 
-        (request.auth.uid in request.resource.data.member_ids && request.resource.data.member_ids.size() == resource.data.member_ids.size() + 1)
+        (request.auth.uid in request.resource.data.member_ids && request.resource.data.member_ids.size() == resource.data.member_ids.size() + 1) ||
+        (request.auth.uid in resource.data.member_ids && !(request.auth.uid in request.resource.data.member_ids) && request.resource.data.member_ids.size() == resource.data.member_ids.size() - 1)
       );
     }
     
@@ -44,7 +54,8 @@ service cloud.firestore {
       allow write: if isAuthenticated() && (
         isOwner(resource.data) || 
         isSharedWithMe(resource.data) ||
-        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+        (request.auth.uid in request.resource.data.get('shared_with_uids', []) && 
+         request.resource.data.get('shared_with_uids', []).size() == resource.data.get('shared_with_uids', []).size() + 1)
       );
       allow create: if isAuthenticated();
     }
@@ -55,7 +66,8 @@ service cloud.firestore {
       allow write: if isAuthenticated() && (
         isOwner(resource.data) || 
         isSharedWithMe(resource.data) ||
-        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+        (request.auth.uid in request.resource.data.get('shared_with_uids', []) && 
+         request.resource.data.get('shared_with_uids', []).size() == resource.data.get('shared_with_uids', []).size() + 1)
       );
       allow create: if isAuthenticated();
     }
@@ -72,7 +84,8 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
       allow write: if isAuthenticated() && (
         isOwner(resource.data) || 
-        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+        (request.auth.uid in request.resource.data.get('shared_with_uids', []) && 
+         request.resource.data.get('shared_with_uids', []).size() == resource.data.get('shared_with_uids', []).size() + 1)
       );
       allow create: if isAuthenticated();
       

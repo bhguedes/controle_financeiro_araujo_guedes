@@ -80,12 +80,21 @@ export const getMyCards = async (userId: string): Promise<Card[]> => {
             getDocs(q4)
         ]);
 
+        console.log(`[getMyCards] Query results for ${userId}:`, {
+            q1: snap1.size,
+            q2: snap2.size,
+            q3: snap3.size,
+            q4: snap4.size
+        });
+
         const docs = [...snap1.docs];
         [...snap2.docs, ...snap3.docs, ...snap4.docs].forEach(d => {
             if (!docs.find(existing => existing.id === d.id)) {
                 docs.push(d);
             }
         });
+
+        console.log(`[getMyCards] Total unique cards found: ${docs.length}`);
 
         const cards: Card[] = [];
 

@@ -12,7 +12,8 @@ import {
     Timestamp,
     arrayUnion,
     arrayRemove,
-    writeBatch
+    writeBatch,
+    deleteField
 } from "firebase/firestore";
 import { Family, FamilyInvitation, InvitationStatus, FamilyRole } from "@/types";
 import { addCardMember } from "./financeService";
@@ -279,17 +280,34 @@ export const acceptInvitation = async (
                 }
             }
 
-            // 3. Investimentos: Adiciona userId em shared_with_uids
+            // 3. Investimentos: Adiciona userId em shared_with_uids e TAMBÉM compartilha a conta atrelada
             if (permissions.investments && permissions.investments.length > 0) {
                 for (const invId of permissions.investments) {
                     try {
                         const invRef = doc(db, "investments", invId);
-                        await updateDoc(invRef, {
-                            shared_with_uids: arrayUnion(userId),
-                            updated_at: Timestamp.now()
-                        });
+                        const invSnap = await getDoc(invRef);
+
+                        if (invSnap.exists()) {
+                            const invData = invSnap.data();
+
+                            // Compartilha o investimento
+                            await updateDoc(invRef, {
+                                shared_with_uids: arrayUnion(userId),
+                                updated_at: Timestamp.now()
+                            });
+
+                            // Compartilha a conta (se houver account_id)
+                            if (invData.account_id) {
+                                const accRef = doc(db, "bank_accounts", invData.account_id);
+                                await updateDoc(accRef, {
+                                    is_shared: true,
+                                    shared_with_uids: arrayUnion(userId),
+                                    updated_at: Timestamp.now()
+                                });
+                            }
+                        }
                     } catch (err) {
-                        console.error(`Erro ao compartilhar investimento ${invId}:`, err);
+                        console.error(`Erro ao compartilhar investimento ${invId} ou sua conta:`, err);
                     }
                 }
             }
@@ -429,3 +447,54 @@ export const cancelInvitation = async (invitationId: string): Promise<void> => {
         throw error;
     }
 };
+/**
+ * Remove um membro da família e limpa suas permissões
+ */
+export const removeMember = async (familyId: string, memberId: string): Promise<void> => {
+    try {
+        // 1. Remove do documento da família
+        const familyRef = doc(db, "families", familyId);
+        await updateDoc(familyRef, {
+            member_ids: arrayRemove(memberId),
+            updated_at: Timestamp.now()
+        });
+
+        // 2. Limpa o perfil do usuário
+        const userRef = doc(db, "users", memberId);
+        await updateDoc(userRef, {
+            family_id: null,
+            role_in_family: null,
+            updated_at: Timestamp.now()
+        });
+
+        // 3. Limpar acessos compartilhados nos ativos
+        const collectionsToCleanup = ["bank_accounts", "cards", "investments"];
+        for (const colName of collectionsToCleanup) {
+            try {
+                const q = query(collection(db, colName), where("shared_with_uids", "array-contains", memberId));
+                const snap = await getDocs(q);
+
+                const batch = writeBatch(db);
+                snap.docs.forEach(docSnap => {
+                    batch.update(docSnap.ref, {
+                        shared_with_uids: arrayRemove(memberId),
+                        updated_at: Timestamp.now()
+                    });
+                });
+                await batch.commit();
+            } catch (err) {
+                console.error(`Erro ao limpar permissões em ${colName}:`, err);
+            }
+        }
+    } catch (error) {
+        console.error("Erro ao remover membro:", error);
+        throw error;
+    }
+};
+
+/**
+ * Usuário sai da própria família
+ */
+export const leaveFamily = async (userId: string, familyId: string): Promise<void> => {
+    return removeMember(familyId, userId);
+}

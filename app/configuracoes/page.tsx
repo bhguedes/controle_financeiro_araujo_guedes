@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { getUserProfile, updateUserProfile, createOrUpdateUserProfile } from "@/services/userService";
-import { createFamily, getPendingInvitations, cancelInvitation, getFamily, getUserPendingInvitations, acceptInvitation, rejectInvitation } from "@/services/familyService";
+import { createFamily, getPendingInvitations, cancelInvitation, getFamily, getUserPendingInvitations, acceptInvitation, rejectInvitation, leaveFamily, removeMember } from "@/services/familyService";
 import { getUsersByFamily } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +149,40 @@ export default function ConfiguracoesPage() {
             loadData();
         } catch (error) {
             console.error(error);
+        }
+    };
+
+    const handleLeaveFamily = async () => {
+        if (!user || !family) return;
+        if (!confirm("Tem certeza que deseja sair desta família? Você perderá acesso aos cartões e contas compartilhados.")) return;
+
+        try {
+            setLoading(true);
+            await leaveFamily(user.uid, family.id);
+            alert("Você saiu da família.");
+            loadData();
+        } catch (error) {
+            console.error("Erro ao sair da família:", error);
+            alert("Erro ao sair da família.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRemoveMember = async (memberId: string, memberName: string) => {
+        if (!user || !family) return;
+        if (!confirm(`Tem certeza que deseja remover ${memberName} da família?`)) return;
+
+        try {
+            setLoading(true);
+            await removeMember(family.id, memberId);
+            alert("Membro removido com sucesso.");
+            loadData();
+        } catch (error) {
+            console.error("Erro ao remover membro:", error);
+            alert("Erro ao remover membro.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -318,15 +352,44 @@ export default function ConfiguracoesPage() {
                                             key={member.uid}
                                             className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                                         >
-                                            <div>
-                                                <p className="font-medium text-slate-800">{member.nome}</p>
+                                            <div className="flex-1">
+                                                <p className="font-medium text-slate-800">
+                                                    {member.nome} {member.uid === user.uid && "(Você)"}
+                                                </p>
                                                 <p className="text-sm text-slate-600">{member.email}</p>
                                             </div>
-                                            {member.uid === family.owner_id && (
-                                                <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full">
-                                                    Proprietário
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-2">
+                                                {member.uid === family.owner_id ? (
+                                                    <span className="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full">
+                                                        Proprietário
+                                                    </span>
+                                                ) : (
+                                                    // Se eu sou o owner, posso remover outros
+                                                    family.owner_id === user.uid ? (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleRemoveMember(member.uid, member.nome)}
+                                                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                        >
+                                                            <Trash2 className="h-4 w-4 mr-1" />
+                                                            Excluir
+                                                        </Button>
+                                                    ) : (
+                                                        // Se eu sou esse membro e não sou owner, posso sair
+                                                        member.uid === user.uid && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={handleLeaveFamily}
+                                                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                            >
+                                                                Sair
+                                                            </Button>
+                                                        )
+                                                    )
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

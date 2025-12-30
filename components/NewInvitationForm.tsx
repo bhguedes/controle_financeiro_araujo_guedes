@@ -127,11 +127,23 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
         setStep(s => Math.max(s - 1, 0));
     };
 
-    const handleToggle = (id: string, list: string[], setList: (l: string[]) => void) => {
+    const handleToggle = (id: string, list: string[], setList: (l: string[]) => void, type: 'card' | 'account' | 'investment' = 'account') => {
         if (list.includes(id)) {
-            setList(list.filter(item => item !== id));
+            const newList = list.filter(item => item !== id);
+            setList(newList);
+
+            // Se desmarcou uma conta, talvez queira desmarcar os investimentos dela? (Opcional, vamos manter simples por enquanto)
         } else {
-            setList([...list, id]);
+            const newList = [...list, id];
+            setList(newList);
+
+            // Se for um investimento, seleciona automaticamente a conta dele
+            if (type === 'investment') {
+                const inv = myInvestments.find(i => i.id === id);
+                if (inv && inv.account_id && !selectedAccounts.includes(inv.account_id)) {
+                    setSelectedAccounts(prev => [...prev, inv.account_id]);
+                }
+            }
         }
     };
 
@@ -322,7 +334,7 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                             <Checkbox
                                                 id={card.id}
                                                 checked={selectedCards.includes(card.id)}
-                                                onCheckedChange={() => handleToggle(card.id, selectedCards, setSelectedCards)}
+                                                onCheckedChange={() => handleToggle(card.id, selectedCards, setSelectedCards, 'card')}
                                             />
                                             <label
                                                 htmlFor={card.id}
@@ -357,7 +369,7 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                             <Checkbox
                                                 id={acc.id}
                                                 checked={selectedAccounts.includes(acc.id)}
-                                                onCheckedChange={() => handleToggle(acc.id, selectedAccounts, setSelectedAccounts)}
+                                                onCheckedChange={() => handleToggle(acc.id, selectedAccounts, setSelectedAccounts, 'account')}
                                             />
                                             <label
                                                 htmlFor={acc.id}
@@ -392,7 +404,7 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                             <Checkbox
                                                 id={inv.id}
                                                 checked={selectedInvestments.includes(inv.id)}
-                                                onCheckedChange={() => handleToggle(inv.id, selectedInvestments, setSelectedInvestments)}
+                                                onCheckedChange={() => handleToggle(inv.id, selectedInvestments, setSelectedInvestments, 'investment')}
                                             />
                                             <label
                                                 htmlFor={inv.id}
