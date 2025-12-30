@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { getUserProfile, updateUserProfile, createOrUpdateUserProfile } from "@/services/userService";
-import { createFamily, createInvitation, getPendingInvitations, cancelInvitation, getFamily } from "@/services/familyService";
+import { createFamily, getPendingInvitations, cancelInvitation, getFamily } from "@/services/familyService";
 import { getUsersByFamily } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserProfile, FamilyInvitation, Family } from "@/types";
 import { Settings, Users, Copy, Trash2, Check } from "lucide-react";
+import { NewInvitationForm } from "@/components/NewInvitationForm";
 
 export default function ConfiguracoesPage() {
     const { user } = useAuth();
@@ -26,7 +27,7 @@ export default function ConfiguracoesPage() {
     const [nome, setNome] = useState("");
     const [telefone, setTelefone] = useState("");
     const [familyName, setFamilyName] = useState("");
-    const [copied, setCopied] = useState(false);
+
 
     useEffect(() => {
         if (user) {
@@ -105,29 +106,7 @@ export default function ConfiguracoesPage() {
         }
     };
 
-    const handleCreateInvitation = async () => {
-        if (!user || !profile || !family) return;
 
-        try {
-            const { code } = await createInvitation(
-                family.id,
-                family.name,
-                user.uid,
-                profile.nome
-            );
-
-            const inviteLink = `${window.location.origin}/convite/${code}`;
-            navigator.clipboard.writeText(inviteLink);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-
-            alert(`Convite criado! Link copiado: ${inviteLink}`);
-            loadData();
-        } catch (error) {
-            console.error("Erro ao criar convite:", error);
-            alert("Erro ao criar convite.");
-        }
-    };
 
     const handleCancelInvitation = async (invitationId: string) => {
         if (!confirm("Tem certeza que deseja cancelar este convite?")) return;
@@ -280,14 +259,12 @@ export default function ConfiguracoesPage() {
                                 <div>
                                     <div className="flex items-center justify-between mb-3">
                                         <h4 className="font-semibold text-slate-800">Convites</h4>
-                                        <Button
-                                            onClick={handleCreateInvitation}
-                                            size="sm"
-                                            className="gap-2"
-                                        >
-                                            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                            {copied ? "Copiado!" : "Novo Convite"}
-                                        </Button>
+                                        <NewInvitationForm
+                                            userId={user.uid}
+                                            userName={profile?.nome || ""}
+                                            familyId={family.id}
+                                            familyName={family.name}
+                                        />
                                     </div>
 
                                     {invitations.length > 0 ? (
