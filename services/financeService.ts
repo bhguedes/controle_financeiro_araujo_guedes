@@ -105,6 +105,7 @@ export const getMyCards = async (userId: string): Promise<Card[]> => {
 
             cards.push({
                 id: cardDoc.id,
+                user_id: cardData.user_id || cardData.ownerId || cardData.owner_id,
                 nome_cartao: cardData.nome_cartao,
                 limite: cardData.limite,
                 dia_fechamento: cardData.dia_fechamento,

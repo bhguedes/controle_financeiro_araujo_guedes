@@ -241,7 +241,7 @@ export const getAccountInvestments = async (accountId: string): Promise<Investme
             return {
                 id: doc.id,
                 account_id: data.account_id,
-                user_id: data.user_id,
+                user_id: data.user_id || data.ownerId || data.owner_id,
                 tipo: data.tipo as InvestmentType,
                 nome: data.nome,
                 valor_investido: data.valor_investido,

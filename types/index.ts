@@ -121,6 +121,7 @@ export interface CardUser {
  */
 export interface Card {
     id: string;
+    user_id: string; // Owner of the card
     nome_cartao: string; // Ex: "Nubank", "Itaú Platinum"
     limite: number;
     dia_fechamento: number; // 1-31

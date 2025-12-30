@@ -4,49 +4,74 @@ service cloud.firestore {
     
     // Funções Auxiliares
     function isAuthenticated() { return request.auth != null; }
+    
+    // Verifica se o usuário é o dono do documento
+    function isOwner(data) {
+      return request.auth.uid == data.user_id || 
+             request.auth.uid == data.ownerId || 
+             request.auth.uid == data.owner_id;
+    }
+    
+    // Verifica se o documento foi compartilhado com o usuário
+    function isSharedWithMe(data) {
+      return request.auth.uid in data.shared_with_uids;
+    }
 
-    // ============================================================================
-    // REGRAS SIMPLIFICADAS (TEMPORÁRIO PARA TESTE)
-    // ============================================================================
-    
-    // Usuários: Autenticado pode ler/escrever qualquer usuário
+    // Usuários: Dono pode ler/escrever seu próprio perfil
     match /users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Famílias: Autenticado pode ler/escrever
+    // Famílias: Membros podem ler
     match /families/{familyId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.owner_id || request.auth.uid in resource.data.member_ids);
+      allow write: if isAuthenticated() && request.auth.uid == resource.data.owner_id;
+      allow create: if isAuthenticated();
     }
     
-    // Convites: Público para ler (validar código), Autenticado para escrever
+    // Convites: Público para ler (validar código), Dono da família para escrever
     match /family_invitations/{invitationId} {
       allow read: if true; 
-      allow write: if isAuthenticated();
+      allow write, create: if isAuthenticated();
     }
 
-    // Contas, Investimentos, Receitas, Cartões, Transações:
-    // Permitindo acesso a qualquer usuário autenticado para resolver o erro
-    
+    // Contas Bancárias
     match /bank_accounts/{accountId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow write: if isAuthenticated() && isOwner(resource.data);
+      allow create: if isAuthenticated();
     }
 
+    // Investimentos
     match /investments/{investmentId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow write: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow create: if isAuthenticated();
     }
 
+    // Receitas
     match /incomes/{incomeId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow write: if isAuthenticated() && isOwner(resource.data);
+      allow create: if isAuthenticated();
     }
 
+    // Cartões
     match /cards/{cardId} {
-      allow read, write: if isAuthenticated();
-      match /users_assigned/{memberId} { allow read, write: if isAuthenticated(); }
+      allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow write: if isAuthenticated() && isOwner(resource.data);
+      allow create: if isAuthenticated();
+      
+      match /users_assigned/{memberId} { 
+        allow read: if isAuthenticated(); 
+        allow write: if isAuthenticated(); 
+      }
     }
 
+    // Transações
     match /transactions/{transactionId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated(); // Transações precisam ser acessíveis pelos membros
+      allow write, create: if isAuthenticated();
     }
   }
 }
