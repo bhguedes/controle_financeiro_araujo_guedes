@@ -346,6 +346,43 @@ export const getPendingInvitations = async (
 };
 
 /**
+ * Busca convites recebidos pelo email do usuário
+ */
+export const getUserPendingInvitations = async (
+    email: string
+): Promise<FamilyInvitation[]> => {
+    try {
+        const q = query(
+            collection(db, "family_invitations"),
+            where("invitee_email", "==", email),
+            where("status", "==", InvitationStatus.PENDING)
+        );
+        const querySnapshot = await getDocs(q);
+
+        return querySnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                family_id: data.family_id,
+                family_name: data.family_name,
+                invited_by: data.invited_by,
+                invited_by_name: data.invited_by_name,
+                invitation_code: data.invitation_code,
+                email: data.email,
+                status: data.status as InvitationStatus,
+                expires_at: data.expires_at.toDate(),
+                created_at: data.created_at.toDate(),
+                accepted_at: data.accepted_at?.toDate(),
+                accepted_by: data.accepted_by,
+            };
+        });
+    } catch (error) {
+        console.error("Erro ao buscar convites recebidos:", error);
+        throw error;
+    }
+};
+
+/**
  * Remove um membro da família
  */
 export const removeFromFamily = async (

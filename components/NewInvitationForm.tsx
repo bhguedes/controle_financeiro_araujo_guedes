@@ -27,7 +27,8 @@ import {
     ArrowRight,
     ArrowLeft,
     Copy,
-    Share2
+    Share2,
+    Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createInvitation } from "@/services/familyService";
@@ -63,8 +64,6 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
     const [open, setOpen] = useState(false);
     const [step, setStep] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [sendingEmail, setSendingEmail] = useState(false);
-    const [emailSent, setEmailSent] = useState(false);
     const [createdCode, setCreatedCode] = useState<string | null>(null);
 
     // Data lists
@@ -107,8 +106,6 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
             // Reset state when closed
             setStep(0);
             setCreatedCode(null);
-            setEmailSent(false);
-            setSendingEmail(false);
             setSelectedCards([]);
             setSelectedAccounts([]);
             setSelectedInvestments([]);
@@ -139,6 +136,7 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
     const onSubmit = async () => {
         setLoading(true);
         try {
+            // 1. Create Invitation
             const result = await createInvitation(
                 familyId,
                 familyName,
@@ -153,20 +151,11 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                     investments: selectedInvestments
                 }
             );
+
             setCreatedCode(result.code);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
-    const handleSendEmail = async () => {
-        if (!createdCode) return;
-
-        setSendingEmail(true);
-        try {
-            const response = await fetch('/api/send-invite', {
+            // 2. Automatically Send Email
+            await fetch('/api/send-invite', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -174,31 +163,26 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                 body: JSON.stringify({
                     inviteeName: formValues.inviteeName,
                     inviteeEmail: formValues.inviteeEmail,
-                    code: createdCode,
+                    code: result.code,
                     inviterName: userName,
                     familyName: familyName,
-                    link: `${window.location.origin}/convite/${createdCode}`
+                    link: `${window.location.origin}/convite/${result.code}`
                 })
             });
 
-            if (response.ok) {
-                setEmailSent(true);
-            } else {
-                const data = await response.json();
-                console.error("Erro ao enviar email:", data);
-                alert("Erro ao enviar email: " + (data.error || "Erro desconhecido"));
-            }
+            // Success state is controlled by createdCode existing
         } catch (error) {
-            console.error("Erro de rede:", error);
-            alert("Erro de rede ao enviar email.");
+            console.error(error);
+            alert("Erro ao criar convite. Tente novamente.");
         } finally {
-            setSendingEmail(false);
+            setLoading(false);
         }
     };
 
     const handleCopyCode = () => {
         if (createdCode) {
             navigator.clipboard.writeText(createdCode);
+            alert("Código copiado!");
         }
     };
 
@@ -208,44 +192,44 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                 <DialogTrigger asChild>{trigger}</DialogTrigger>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle className="text-center text-2xl text-emerald-600">Convite Criado!</DialogTitle>
-                        <DialogDescription className="text-center">
-                            O convite para <b>{formValues.inviteeName}</b> foi gerado com sucesso.
+                        <DialogTitle className="text-center text-2xl text-emerald-600 flex flex-col items-center gap-2">
+                            <Check className="h-12 w-12 bg-emerald-100 p-2 rounded-full" />
+                            Convite Enviado!
+                        </DialogTitle>
+                        <DialogDescription className="text-center text-slate-600 pt-2">
+                            Enviamos um email para <b>{formValues.inviteeEmail}</b> com o link de acesso.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex flex-col items-center space-y-4 py-4">
-                        <div className="bg-slate-100 p-4 rounded-xl w-full text-center space-y-2">
-                            <p className="text-sm text-slate-500">Código de Acesso</p>
-                            <div className="flex items-center justify-center gap-2">
-                                <span className="text-3xl font-mono font-bold tracking-widest text-slate-800">
+                    <div className="flex flex-col items-center space-y-6 py-6">
+                        <div className="text-center space-y-2">
+                            <p className="text-sm text-slate-500">
+                                A pessoa também poderá aceitar este convite acessando:<br />
+                                <span className="font-medium text-slate-800">Configurações &gt; Família</span>
+                            </p>
+                        </div>
+
+                        {/* Backup Code - Minimizado */}
+                        <div className="w-full border-t pt-4">
+                            <p className="text-xs text-center text-slate-400 mb-2">
+                                Caso o email não chegue, copie o código abaixo:
+                            </p>
+                            <div className="flex items-center justify-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100 mx-auto max-w-[200px]">
+                                <span className="font-mono font-bold text-slate-700 tracking-wider">
                                     {createdCode}
                                 </span>
-                                <Button size="icon" variant="ghost" onClick={handleCopyCode}>
-                                    <Copy className="h-4 w-4" />
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleCopyCode} title="Copiar">
+                                    <Copy className="h-3 w-3" />
                                 </Button>
                             </div>
                         </div>
 
-                        {emailSent ? (
-                            <div className="w-full flex items-center justify-center gap-2 bg-green-100 text-green-800 font-medium py-3 rounded-lg border border-green-200">
-                                <Check className="h-5 w-5" />
-                                Email Enviado com Sucesso!
-                            </div>
-                        ) : (
-                            <Button
-                                onClick={handleSendEmail}
-                                disabled={sendingEmail}
-                                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-6 rounded-lg transition-colors"
-                            >
-                                <Mail className="h-5 w-5" />
-                                {sendingEmail ? "Enviando..." : "Enviar Convite por Email"}
-                            </Button>
-                        )}
-
-                        <p className="text-xs text-slate-400 text-center px-4">
-                            Clique em enviar para disparar o convite automático para <b>{formValues.inviteeEmail}</b>.
-                        </p>
+                        <Button
+                            className="w-full bg-slate-900 hover:bg-slate-800"
+                            onClick={() => setOpen(false)}
+                        >
+                            Fechar
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -455,14 +439,14 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                 </div>
                             </div>
                             <p className="text-center text-sm text-slate-500">
-                                Ao confirmar, um código único será gerado.
+                                O convite será enviado automaticamente por email.
                             </p>
                         </div>
                     )}
                 </div>
 
                 {/* Footer */}
-                <div className="bg-white p-4 border-t border-slate-100 flex justify-between">
+                <div className="bg-white p-4 border-t border-slate-100 flex justify-between items-center">
                     <Button
                         variant="ghost"
                         onClick={step === 0 ? () => setOpen(false) : handleBack}
@@ -485,8 +469,17 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                             disabled={loading}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 px-8 shadow-lg shadow-emerald-200"
                         >
-                            {loading ? "Criando..." : "Confirmar e Gerar Código"}
-                            {!loading && <Check className="h-4 w-4" />}
+                            {loading ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Enviando...
+                                </>
+                            ) : (
+                                <>
+                                    Enviar Convite
+                                    <Mail className="h-4 w-4" />
+                                </>
+                            )}
                         </Button>
                     )}
                 </div>

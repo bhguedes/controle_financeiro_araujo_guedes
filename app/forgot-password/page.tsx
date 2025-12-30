@@ -22,6 +22,7 @@ export default function ForgotPasswordPage() {
         setError("");
 
         try {
+            auth.languageCode = 'pt-BR'; // Força o envio em português
             await sendPasswordResetEmail(auth, email);
             setMessage("Email de redefinição enviado! Verifique sua caixa de entrada.");
         } catch (error: any) {

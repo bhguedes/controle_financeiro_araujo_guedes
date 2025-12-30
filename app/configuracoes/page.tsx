@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { getUserProfile, updateUserProfile, createOrUpdateUserProfile } from "@/services/userService";
-import { createFamily, getPendingInvitations, cancelInvitation, getFamily } from "@/services/familyService";
+import { createFamily, getPendingInvitations, cancelInvitation, getFamily, getUserPendingInvitations, acceptInvitation, rejectInvitation } from "@/services/familyService";
 import { getUsersByFamily } from "@/services/userService";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserProfile, FamilyInvitation, Family } from "@/types";
-import { Settings, Users, Copy, Trash2, Check } from "lucide-react";
+import { Settings, Users, Copy, Trash2, Check, Mail } from "lucide-react";
 import { NewInvitationForm } from "@/components/NewInvitationForm";
 
 export default function ConfiguracoesPage() {
@@ -21,6 +21,7 @@ export default function ConfiguracoesPage() {
     const [family, setFamily] = useState<Family | null>(null);
     const [familyMembers, setFamilyMembers] = useState<UserProfile[]>([]);
     const [invitations, setInvitations] = useState<FamilyInvitation[]>([]);
+    const [receivedInvitations, setReceivedInvitations] = useState<FamilyInvitation[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Form states
@@ -68,6 +69,12 @@ export default function ConfiguracoesPage() {
                         const pending = await getPendingInvitations(userProfile.family_id);
                         setInvitations(pending);
                     }
+                }
+
+                // Carrega convites recebidos (independente de ter família ou não)
+                if (user.email) {
+                    const received = await getUserPendingInvitations(user.email);
+                    setReceivedInvitations(received);
                 }
             }
         } catch (error) {
@@ -118,6 +125,30 @@ export default function ConfiguracoesPage() {
         } catch (error) {
             console.error("Erro ao cancelar convite:", error);
             alert("Erro ao cancelar convite.");
+        }
+    };
+
+    const handleAcceptInvitation = async (invitation: FamilyInvitation) => {
+        if (!user) return;
+        if (family && !confirm("Aceitar este convite irá mover você para a nova família. Continuar?")) return;
+
+        try {
+            await acceptInvitation(invitation.id, user.uid);
+            alert("Convite aceito! Bem-vindo à família.");
+            loadData();
+        } catch (error) {
+            console.error("Erro ao aceitar:", error);
+            alert("Erro ao aceitar convite.");
+        }
+    };
+
+    const handleRejectInvitation = async (invitationId: string) => {
+        if (!confirm("Recusar convite?")) return;
+        try {
+            await rejectInvitation(invitationId);
+            loadData();
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -202,6 +233,53 @@ export default function ConfiguracoesPage() {
                             Família
                         </h2>
                     </div>
+
+                    {/* Convites Recebidos */}
+                    {receivedInvitations.length > 0 && (
+                        <div className="mb-8 bg-emerald-50 border border-emerald-100 rounded-xl p-4 animate-in fade-in slide-in-from-top-4">
+                            <h3 className="font-semibold text-emerald-800 mb-3 flex items-center gap-2">
+                                <Mail className="h-5 w-5" />
+                                Convites Recebidos
+                            </h3>
+                            <div className="space-y-3">
+                                {receivedInvitations.map((inv) => (
+                                    <div key={inv.id} className="bg-white p-4 rounded-lg shadow-sm border border-emerald-100">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div>
+                                                <p className="font-bold text-slate-800">{inv.family_name}</p>
+                                                <p className="text-sm text-slate-600">
+                                                    Convidado por <span className="font-medium">{inv.invited_by_name}</span>
+                                                </p>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Para: {inv.role_label}
+                                                </p>
+                                            </div>
+                                            <span className="text-xs text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full font-medium">
+                                                Pendente
+                                            </span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                onClick={() => handleAcceptInvitation(inv)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1"
+                                                size="sm"
+                                            >
+                                                Aceitar
+                                            </Button>
+                                            <Button
+                                                onClick={() => handleRejectInvitation(inv.id)}
+                                                variant="outline"
+                                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 flex-1"
+                                                size="sm"
+                                            >
+                                                Recusar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {!family ? (
                         <form onSubmit={handleCreateFamily} className="space-y-4">

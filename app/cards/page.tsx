@@ -106,10 +106,10 @@ export default function CardsPage() {
         // Filtra membros vazios
         const validMembers = members.filter((m) => m.trim() !== "");
 
-        if (validMembers.length === 0) {
-            alert("Adicione pelo menos um membro ao cartão.");
-            return;
-        }
+        // if (validMembers.length === 0) {
+        //     alert("Adicione pelo menos um membro ao cartão.");
+        //     return;
+        // }
 
         try {
             setSubmitting(true);

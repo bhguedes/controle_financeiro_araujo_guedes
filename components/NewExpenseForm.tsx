@@ -80,6 +80,9 @@ interface NewExpenseFormProps {
     accounts?: BankAccount[];
     onSubmit: (data: TransactionFormData) => void;
     trigger?: React.ReactNode;
+    initialData?: Partial<TransactionFormData>;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 const STEPS = [
@@ -90,8 +93,15 @@ const STEPS = [
     { id: 'revisao', title: 'Confirmação', icon: Check },
 ];
 
-export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger }: NewExpenseFormProps) {
-    const [open, setOpen] = useState(false);
+export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initialData, open: controlledOpen, onOpenChange }: NewExpenseFormProps) {
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (newOpen: boolean) => {
+        if (onOpenChange) onOpenChange(newOpen);
+        if (!isControlled) setInternalOpen(newOpen);
+    };
+
     const [step, setStep] = useState(0);
     const [direction, setDirection] = useState(0);
 
@@ -126,9 +136,25 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger }: NewE
         if (open) {
             setStep(0);
             setDirection(0);
-            // reset(); // Optional: reset on open
+            if (initialData) {
+                // Ensure data is Date object
+                const data = initialData.data instanceof Date ? initialData.data : new Date(initialData.data as any);
+                reset({
+                    ...initialData,
+                    data,
+                } as ExpenseFormValues);
+            } else {
+                reset({
+                    valor: 0,
+                    data: new Date(),
+                    tipo: TransactionType.VARIAVEL,
+                    categoria: Category.ALIMENTACAO,
+                    metodo_pagamento: PaymentMethod.DINHEIRO_PIX,
+                    parcelado: false,
+                });
+            }
         }
-    }, [open]);
+    }, [open, initialData, reset]);
 
     // Dynamic Step handling
     const currentSteps = useMemo(() => {

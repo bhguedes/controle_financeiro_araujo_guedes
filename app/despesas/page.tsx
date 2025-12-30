@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { getMyTransactions, addTransaction, updateTransaction } from "@/services/financeService";
+import { getMyTransactions, addTransaction, updateTransaction, deleteTransaction } from "@/services/financeService";
 import { getMyCards } from "@/services/financeService";
 import { getMyAccounts } from "@/services/accountService";
 import { NewExpenseForm } from "@/components/NewExpenseForm";
 import { Card, BankAccount, Transaction, TransactionType, TransactionStatus, TransactionFormData, CategoryLabels, PaymentMethodLabels } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { PlusCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Pencil, Trash2, PlusCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -21,7 +20,9 @@ export default function DespesasPage() {
     const [loading, setLoading] = useState(true);
     const [cards, setCards] = useState<Card[]>([]);
     const [accounts, setAccounts] = useState<BankAccount[]>([]);
-    const [isNewExpenseOpen, setIsNewExpenseOpen] = useState(false);
+
+    // State for Editing
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
     useEffect(() => {
         if (user) {
@@ -57,19 +58,43 @@ export default function DespesasPage() {
         }
     };
 
-    const handleNewExpense = async (data: TransactionFormData & { mes_fatura?: string }) => {
+    const handleNewExpense = async (data: TransactionFormData) => {
         if (!user) return;
         try {
             await addTransaction(user.uid, {
                 ...data,
-                status: TransactionStatus.COMPLETED // Default is completed unless specified
+                status: TransactionStatus.COMPLETED // Default is completed
             });
-            setIsNewExpenseOpen(false);
             loadData();
             alert("Despesa adicionada!");
         } catch (error) {
             console.error(error);
             alert("Erro ao adicionar despesa.");
+        }
+    };
+
+    const handleEditSubmit = async (data: TransactionFormData) => {
+        if (!editingTransaction) return;
+        try {
+            await updateTransaction(editingTransaction.id, data);
+            setEditingTransaction(null);
+            loadData();
+            alert("Despesa atualizada!");
+        } catch (error) {
+            console.error("Erro ao atualizar despesa:", error);
+            alert("Erro ao atualizar despesa.");
+        }
+    };
+
+    const handleDelete = async (t: Transaction) => {
+        if (!confirm(`Tem certeza que deseja excluir "${t.descricao}"?`)) return;
+        try {
+            await deleteTransaction(t.id);
+            loadData();
+            alert("Despesa excluída!");
+        } catch (error) {
+            console.error("Erro ao excluir despesa:", error);
+            alert("Erro ao excluir despesa.");
         }
     };
 
@@ -80,17 +105,6 @@ export default function DespesasPage() {
                 status: TransactionStatus.COMPLETED,
                 updated_at: new Date()
             });
-
-            // If it's an investment goal (implied by Category INVESTIMENTOS and recurring probably),
-            // we might want to add value to the Investment here?
-            // But currently the updated logic for Investment handles 'Interest'.
-            // The 'Contribution' logic was: "Ao clicar nesse botão... todo mês... confirmar...".
-            // If I confirm here, I should probably call `addInvestmentValue`?
-            // Since I don't have that function exposed specifically, and `updateInvestment` overwrites value...
-            // I'll leave it as just marking Paid for now. 
-            // The User's "Investment Value" should ideally be updated from the "Bank Account" balance deduction?
-            // Or if paid by generic means.
-            // I'll stick to updating status.
 
             alert("Despesa confirmada!");
             loadData();
@@ -116,24 +130,19 @@ export default function DespesasPage() {
                         <h1 className="text-3xl font-bold text-slate-900">Despesas</h1>
                         <p className="text-slate-600">Gerencie suas saídas e pagamentos</p>
                     </div>
-                    <Dialog open={isNewExpenseOpen} onOpenChange={setIsNewExpenseOpen}>
-                        <DialogTrigger asChild>
+
+                    {/* Botão Nova Despesa (usando o componente refatorado) */}
+                    <NewExpenseForm
+                        cards={cards}
+                        accounts={accounts}
+                        onSubmit={handleNewExpense}
+                        trigger={
                             <Button className="gap-2 bg-red-600 hover:bg-red-700">
                                 <PlusCircle className="h-4 w-4" />
                                 Nova Despesa
                             </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-2xl">
-                            <DialogHeader>
-                                <DialogTitle>Nova Despesa</DialogTitle>
-                            </DialogHeader>
-                            <NewExpenseForm
-                                cards={cards}
-                                accounts={accounts}
-                                onSubmit={handleNewExpense}
-                            />
-                        </DialogContent>
-                    </Dialog>
+                        }
+                    />
                 </div>
 
                 {/* Pendentes */}
@@ -155,14 +164,34 @@ export default function DespesasPage() {
                                             R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                                         </p>
                                     </div>
-                                    <Button
-                                        size="sm"
-                                        className="bg-green-600 hover:bg-green-700"
-                                        onClick={() => handleConfirmTransaction(t)}
-                                    >
-                                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                                        Confirmar
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => setEditingTransaction(t)}
+                                            className="text-slate-400 hover:text-blue-600"
+                                            title="Editar"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => handleDelete(t)}
+                                            className="text-slate-400 hover:text-red-600"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            className="bg-green-600 hover:bg-green-700 ml-2"
+                                            onClick={() => handleConfirmTransaction(t)}
+                                        >
+                                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                                            Confirmar
+                                        </Button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -178,30 +207,66 @@ export default function DespesasPage() {
                         <p className="text-slate-500">Nenhuma despesa registrada.</p>
                     ) : (
                         completedTransactions.map(t => (
-                            <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
-                                <div>
+                            <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center group">
+                                <div className="flex-1">
                                     <p className="font-medium text-slate-900">{t.descricao}</p>
-                                    <p className="text-sm text-slate-500">
-                                        {format(t.data, "dd/MM/yyyy", { locale: ptBR })} • {CategoryLabels[t.categoria]}
-                                    </p>
-                                    {t.parcelado && (
-                                        <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                                            {t.parcela_atual}/{t.numero_parcelas}
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                                        <span>{format(t.data, "dd/MM/yyyy", { locale: ptBR })}</span>
+                                        <span>•</span>
+                                        <span>{CategoryLabels[t.categoria]}</span>
+                                        {t.parcelado && (
+                                            <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 flex items-center">
+                                                {t.parcela_atual}/{t.numero_parcelas}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="font-bold text-red-600">
-                                        - R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                        {PaymentMethodLabels[t.metodo_pagamento]}
-                                    </p>
+                                <div className="text-right flex items-center gap-4">
+                                    <div>
+                                        <p className="font-bold text-red-600">
+                                            - R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            {PaymentMethodLabels[t.metodo_pagamento]}
+                                        </p>
+                                    </div>
+
+                                    {/* Ações (aparecem ao passar o mouse ou mobile) */}
+                                    <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => setEditingTransaction(t)}
+                                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => handleDelete(t)}
+                                            className="h-8 w-8 text-slate-400 hover:text-red-600"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         ))
                     )}
                 </div>
+
+                {/* Dialogo de Edição */}
+                <NewExpenseForm
+                    open={!!editingTransaction}
+                    onOpenChange={(open) => {
+                        if (!open) setEditingTransaction(null);
+                    }}
+                    cards={cards}
+                    accounts={accounts}
+                    onSubmit={handleEditSubmit}
+                    initialData={editingTransaction || undefined}
+                />
             </div>
         </main>
     );
