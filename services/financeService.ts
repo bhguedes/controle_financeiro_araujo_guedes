@@ -38,7 +38,7 @@ export const addCard = async (
             limite: cardData.limite,
             dia_fechamento: cardData.dia_fechamento,
             dia_vencimento: cardData.dia_vencimento,
-            ownerId: userId,
+            user_id: userId, // Normalized to user_id
             created_at: Timestamp.now(),
             updated_at: Timestamp.now(),
         });
@@ -66,12 +66,23 @@ export const addCard = async (
  */
 export const getMyCards = async (userId: string): Promise<Card[]> => {
     try {
-        const q = query(collection(db, "cards"), where("ownerId", "==", userId));
-        const querySnapshot = await getDocs(q);
+        // Busca cartões com user_id OU ownerId OU owner_id (para compatibilidade máxima)
+        const q1 = query(collection(db, "cards"), where("user_id", "==", userId));
+        const q2 = query(collection(db, "cards"), where("ownerId", "==", userId));
+        const q3 = query(collection(db, "cards"), where("owner_id", "==", userId));
+
+        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+
+        const docs = [...snap1.docs];
+        [...snap2.docs, ...snap3.docs].forEach(d => {
+            if (!docs.find(existing => existing.id === d.id)) {
+                docs.push(d);
+            }
+        });
 
         const cards: Card[] = [];
 
-        for (const cardDoc of querySnapshot.docs) {
+        for (const cardDoc of docs) {
             const cardData = cardDoc.data();
 
             // Busca os membros do cartão

@@ -266,6 +266,7 @@ export default function DespesasPage() {
                     accounts={accounts}
                     onSubmit={handleEditSubmit}
                     initialData={editingTransaction || undefined}
+                    trigger={null}
                 />
             </div>
         </main>

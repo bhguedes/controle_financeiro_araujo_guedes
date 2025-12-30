@@ -101,7 +101,9 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                 setMyAccounts(accounts);
                 setMyInvestments(investments);
                 setLoading(false);
-            }).catch(console.error);
+            }).catch(err => {
+                setLoading(false);
+            });
         } else {
             // Reset state when closed
             setStep(0);
@@ -335,8 +337,10 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-center py-8 text-slate-500 bg-slate-100 rounded-lg">
-                                    Você não possui cartões cadastrados.
+                                <div className="text-center py-8 px-4 text-slate-500 bg-slate-100 rounded-lg">
+                                    <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                    Você não possui cartões próprios para compartilhar.<br />
+                                    <span className="text-xs">Nota: Você só pode compartilhar cartões onde você é o proprietário.</span>
                                 </div>
                             )}
                         </div>
@@ -368,8 +372,10 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-center py-8 text-slate-500 bg-slate-100 rounded-lg">
-                                    Você não possui contas cadastradas.
+                                <div className="text-center py-8 px-4 text-slate-500 bg-slate-100 rounded-lg">
+                                    <Wallet className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                    Você não possui contas próprias para compartilhar.<br />
+                                    <span className="text-xs">Nota: Você só pode compartilhar contas onde você é o proprietário.</span>
                                 </div>
                             )}
                         </div>
@@ -401,8 +407,10 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-center py-8 text-slate-500 bg-slate-100 rounded-lg">
-                                    Você não possui investimentos cadastrados.
+                                <div className="text-center py-8 px-4 text-slate-500 bg-slate-100 rounded-lg">
+                                    <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                    Você não possui investimentos próprios para compartilhar.<br />
+                                    <span className="text-xs">Nota: Você só pode compartilhar investimentos onde você é o proprietário.</span>
                                 </div>
                             )}
                         </div>
@@ -450,7 +458,6 @@ export function NewInvitationForm({ userId, userName, familyId, familyName, trig
                     <Button
                         variant="ghost"
                         onClick={step === 0 ? () => setOpen(false) : handleBack}
-                        disabled={loading}
                         className="text-slate-500 hover:text-slate-800"
                     >
                         {step === 0 ? "Cancelar" : "Voltar"}

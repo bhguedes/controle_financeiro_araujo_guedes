@@ -53,17 +53,26 @@ export const addBankAccount = async (
  */
 export const getMyAccounts = async (userId: string): Promise<BankAccount[]> => {
     try {
-        const q = query(
-            collection(db, "bank_accounts"),
-            where("user_id", "==", userId)
-        );
-        const querySnapshot = await getDocs(q);
+        const q1 = query(collection(db, "bank_accounts"), where("user_id", "==", userId));
+        const q2 = query(collection(db, "bank_accounts"), where("ownerId", "==", userId));
+        const q3 = query(collection(db, "bank_accounts"), where("owner_id", "==", userId));
 
-        return querySnapshot.docs.map((doc) => {
+        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+
+        const docs = [...snap1.docs];
+        [...snap2.docs, ...snap3.docs].forEach(d => {
+            if (!docs.find(existing => existing.id === d.id)) {
+                docs.push(d);
+            }
+        });
+
+        console.log("[accountService] getMyAccounts found:", docs.length);
+
+        return docs.map((doc) => {
             const data = doc.data();
             return {
                 id: doc.id,
-                user_id: data.user_id,
+                user_id: data.user_id || data.ownerId || data.owner_id,
                 nome_banco: data.nome_banco,
                 tipo_conta: data.tipo_conta as AccountType,
                 saldo_atual: data.saldo_atual,
@@ -217,8 +226,7 @@ export const getAccountInvestments = async (accountId: string): Promise<Investme
     try {
         const q = query(
             collection(db, "investments"),
-            where("account_id", "==", accountId),
-            orderBy("data_aplicacao", "desc")
+            where("account_id", "==", accountId)
         );
         const querySnapshot = await getDocs(q);
 
@@ -252,19 +260,27 @@ export const getAccountInvestments = async (accountId: string): Promise<Investme
  */
 export const getMyInvestments = async (userId: string): Promise<Investment[]> => {
     try {
-        const q = query(
-            collection(db, "investments"),
-            where("user_id", "==", userId),
-            orderBy("data_aplicacao", "desc")
-        );
-        const querySnapshot = await getDocs(q);
+        const q1 = query(collection(db, "investments"), where("user_id", "==", userId));
+        const q2 = query(collection(db, "investments"), where("ownerId", "==", userId));
+        const q3 = query(collection(db, "investments"), where("owner_id", "==", userId));
 
-        return querySnapshot.docs.map((doc) => {
+        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+
+        const docs = [...snap1.docs];
+        [...snap2.docs, ...snap3.docs].forEach(d => {
+            if (!docs.find(existing => existing.id === d.id)) {
+                docs.push(d);
+            }
+        });
+
+        console.log("[accountService] getMyInvestments found:", docs.length);
+
+        return docs.map((doc) => {
             const data = doc.data();
             return {
                 id: doc.id,
                 account_id: data.account_id,
-                user_id: data.user_id,
+                user_id: data.user_id || data.ownerId || data.owner_id,
                 tipo: data.tipo as InvestmentType,
                 nome: data.nome,
                 valor_investido: data.valor_investido,

@@ -136,12 +136,19 @@ export function NewIncomeForm({ members, onSubmit, trigger }: NewIncomeFormProps
             ? members.find(m => m.id === data.membroId)?.nome || ""
             : data.membroId;
 
+        // Ajusta a data para o meio-dia local para evitar problemas de fuso horário ao salvar no Firebase
+        let adjustedDate: Date | undefined = undefined;
+        if (data.data_recebimento) {
+            adjustedDate = new Date(data.data_recebimento);
+            adjustedDate.setHours(12, 0, 0, 0);
+        }
+
         onSubmit({
             descricao: data.descricao,
             valor: data.valor,
             membroId: data.membroId,
             tipo: data.tipo,
-            data_recebimento: data.data_recebimento,
+            data_recebimento: adjustedDate,
             dia_recorrencia: data.dia_recorrencia,
             membroNome: memberName,
         });

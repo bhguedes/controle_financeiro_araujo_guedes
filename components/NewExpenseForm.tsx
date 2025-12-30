@@ -60,17 +60,6 @@ const expenseSchema = z.object({
     account_id: z.string().optional(),
     parcelado: z.boolean().optional(),
     numero_parcelas: z.number().optional(),
-}).refine((data) => {
-    if (data.metodo_pagamento === PaymentMethod.CARTAO_CREDITO) {
-        return !!data.card_id && !!data.user_id_gasto;
-    }
-    if (data.metodo_pagamento === PaymentMethod.DINHEIRO_PIX) {
-        return !!data.account_id;
-    }
-    return true;
-}, {
-    message: "Preencha os dados do pagamento",
-    path: ["metodo_pagamento"],
 });
 
 type ExpenseFormValues = z.infer<typeof expenseSchema>;
@@ -193,8 +182,14 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
                     const o1 = await validateField("card_id");
                     const o2 = await validateField("user_id_gasto");
                     valid = o1 && o2;
+                    if (!valid) {
+                        alert("Selecione o cartão e o usuário.");
+                    }
                 } else {
                     valid = await validateField("account_id");
+                    if (!valid) {
+                        alert("Selecione a conta bancária.");
+                    }
                 }
                 break;
             default: valid = true;
@@ -212,7 +207,14 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
     };
 
     const handleFormSubmit = (data: ExpenseFormValues) => {
-        onSubmit(data);
+        // Ajusta a data para o meio-dia local para evitar problemas de fuso horário ao salvar no Firebase
+        const adjustedDate = new Date(data.data);
+        adjustedDate.setHours(12, 0, 0, 0);
+
+        onSubmit({
+            ...data,
+            data: adjustedDate
+        });
         setOpen(false);
         reset();
         setStep(0);
@@ -221,7 +223,7 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                {trigger || (
+                {trigger !== undefined ? trigger : (
                     <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition-all rounded-full h-14 px-8 text-lg">
                         <DollarSign className="h-6 w-6" />
                         Nova Despesa

@@ -141,13 +141,17 @@ export default function ContasPage() {
     const handleAddInvestment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !selectedAccountId) return;
+        // Ajusta a data para o meio-dia local para evitar problemas de fuso horário
+        const adjustedDate = new Date(dataAplicacao);
+        adjustedDate.setHours(12, 0, 0, 0);
+
         try {
             await addInvestment(user.uid, selectedAccountId, {
                 tipo: tipoInvestimento,
                 nome: nomeInvestimento,
                 valor_investido: parseFloat(valorInvestido),
                 valor_atual: parseFloat(valorAtual),
-                data_aplicacao: new Date(dataAplicacao),
+                data_aplicacao: adjustedDate,
                 taxa_fixa_mensal: parseFloat(investTaxaMensal) || 0,
                 aporte_mensal: parseFloat(investAporteMensal) || 0,
             });
@@ -185,12 +189,16 @@ export default function ContasPage() {
             const aporte = parseFloat(simAporteMensal) || 0;
             const taxa = parseFloat(simTaxaMensal) || 0;
 
+            // Ajusta a data para o meio-dia local
+            const goalDate = new Date();
+            goalDate.setHours(12, 0, 0, 0);
+
             await addInvestment(user!.uid, selectedAccountId, {
                 tipo: InvestmentType.RENDA_FIXA,
                 nome: `Meta: ${aporte > 0 ? 'Aporte Mensal' : 'Investimento'}`,
                 valor_investido: parseFloat(simValorInicial) || 0,
                 valor_atual: parseFloat(simValorInicial) || 0,
-                data_aplicacao: new Date(),
+                data_aplicacao: goalDate,
                 taxa_fixa_mensal: taxa,
                 aporte_mensal: aporte
             });
@@ -201,7 +209,7 @@ export default function ContasPage() {
                     descricao: "Aporte: Meta Investimento",
                     valor: aporte,
                     categoria: Category.INVESTIMENTOS,
-                    data: new Date(),
+                    data: goalDate,
                     tipo: TransactionType.CONTA_FIXA, // Changed to CONTA_FIXA as it is recurring? Or VARIAVEL? Usually Invest is Expense.
                     // But TransactionType only has RENDA, CONTA_FIXA, VARIAVEL.
                     // Expense is implied by NOT RENDA? No.
