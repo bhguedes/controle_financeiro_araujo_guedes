@@ -243,11 +243,18 @@ export const acceptInvitation = async (
         // ============================================
         const permissions = invitation.permissions;
         if (permissions) {
-            // 1. Cartões: Adiciona usuário como membro
+            // 1. Cartões: Adiciona usuário em shared_with_uids e também como membro da subcoleção
             if (permissions.cards && permissions.cards.length > 0) {
                 for (const cardId of permissions.cards) {
                     try {
-                        // Usa o nome do convite ou um genérico
+                        // Método 1: shared_with_uids (Novo padrão para busca eficiente)
+                        const cardRef = doc(db, "cards", cardId);
+                        await updateDoc(cardRef, {
+                            shared_with_uids: arrayUnion(userId),
+                            updated_at: Timestamp.now()
+                        });
+
+                        // Método 2: users_assigned (Mantendo para compatibilidade com UI de membros)
                         const memberName = invitation.role_label || invitation.invitee_name || "Membro da Família";
                         await addCardMember(cardId, memberName);
                     } catch (err) {

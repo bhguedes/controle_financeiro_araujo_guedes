@@ -38,7 +38,8 @@ export const addCard = async (
             limite: cardData.limite,
             dia_fechamento: cardData.dia_fechamento,
             dia_vencimento: cardData.dia_vencimento,
-            user_id: userId, // Normalized to user_id
+            user_id: userId,
+            shared_with_uids: [], // Inicializa array de compartilhamento
             created_at: Timestamp.now(),
             updated_at: Timestamp.now(),
         });
@@ -66,15 +67,21 @@ export const addCard = async (
  */
 export const getMyCards = async (userId: string): Promise<Card[]> => {
     try {
-        // Busca cartões com user_id OU ownerId OU owner_id (para compatibilidade máxima)
+        // Busca cartões onde o usuário é dono OU está na lista de compartilhamento
         const q1 = query(collection(db, "cards"), where("user_id", "==", userId));
         const q2 = query(collection(db, "cards"), where("ownerId", "==", userId));
         const q3 = query(collection(db, "cards"), where("owner_id", "==", userId));
+        const q4 = query(collection(db, "cards"), where("shared_with_uids", "array-contains", userId));
 
-        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+        const [snap1, snap2, snap3, snap4] = await Promise.all([
+            getDocs(q1),
+            getDocs(q2),
+            getDocs(q3),
+            getDocs(q4)
+        ]);
 
         const docs = [...snap1.docs];
-        [...snap2.docs, ...snap3.docs].forEach(d => {
+        [...snap2.docs, ...snap3.docs, ...snap4.docs].forEach(d => {
             if (!docs.find(existing => existing.id === d.id)) {
                 docs.push(d);
             }

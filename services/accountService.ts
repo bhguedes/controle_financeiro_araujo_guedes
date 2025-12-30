@@ -56,11 +56,17 @@ export const getMyAccounts = async (userId: string): Promise<BankAccount[]> => {
         const q1 = query(collection(db, "bank_accounts"), where("user_id", "==", userId));
         const q2 = query(collection(db, "bank_accounts"), where("ownerId", "==", userId));
         const q3 = query(collection(db, "bank_accounts"), where("owner_id", "==", userId));
+        const q4 = query(collection(db, "bank_accounts"), where("shared_with_uids", "array-contains", userId));
 
-        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+        const [snap1, snap2, snap3, snap4] = await Promise.all([
+            getDocs(q1),
+            getDocs(q2),
+            getDocs(q3),
+            getDocs(q4)
+        ]);
 
         const docs = [...snap1.docs];
-        [...snap2.docs, ...snap3.docs].forEach(d => {
+        [...snap2.docs, ...snap3.docs, ...snap4.docs].forEach(d => {
             if (!docs.find(existing => existing.id === d.id)) {
                 docs.push(d);
             }
@@ -263,11 +269,17 @@ export const getMyInvestments = async (userId: string): Promise<Investment[]> =>
         const q1 = query(collection(db, "investments"), where("user_id", "==", userId));
         const q2 = query(collection(db, "investments"), where("ownerId", "==", userId));
         const q3 = query(collection(db, "investments"), where("owner_id", "==", userId));
+        const q4 = query(collection(db, "investments"), where("shared_with_uids", "array-contains", userId));
 
-        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+        const [snap1, snap2, snap3, snap4] = await Promise.all([
+            getDocs(q1),
+            getDocs(q2),
+            getDocs(q3),
+            getDocs(q4)
+        ]);
 
         const docs = [...snap1.docs];
-        [...snap2.docs, ...snap3.docs].forEach(d => {
+        [...snap2.docs, ...snap3.docs, ...snap4.docs].forEach(d => {
             if (!docs.find(existing => existing.id === d.id)) {
                 docs.push(d);
             }
