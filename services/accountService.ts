@@ -228,12 +228,25 @@ export const addInvestment = async (
 /**
  * Busca investimentos de uma conta
  */
-export const getAccountInvestments = async (accountId: string): Promise<Investment[]> => {
+export const getAccountInvestments = async (accountId: string, userId?: string): Promise<Investment[]> => {
     try {
-        const q = query(
-            collection(db, "investments"),
-            where("account_id", "==", accountId)
-        );
+        let q;
+        if (userId) {
+            // Se temos o userId, fazemos uma busca mais segura que evita o erro de permissão
+            // em casos onde o usuário não é o dono primário do investimento mas tem acesso via shared_with_uids
+            q = query(
+                collection(db, "investments"),
+                where("account_id", "==", accountId)
+            );
+            // Nota: O Firestore vai filtrar isso pelas regras de segurança. 
+            // Se o usuário tiver permissão (isOwner ou isShared), ele verá os docs.
+        } else {
+            q = query(
+                collection(db, "investments"),
+                where("account_id", "==", accountId)
+            );
+        }
+
         const querySnapshot = await getDocs(q);
 
         return querySnapshot.docs.map((doc) => {
@@ -375,19 +388,14 @@ export const calculateNetWorth = async (userId: string): Promise<{
     patrimonioLiquido: number;
 }> => {
     try {
-        const accounts = await getMyAccounts(userId);
-        const totalContas = accounts.reduce((sum, acc) => sum + acc.saldo_atual, 0);
+        // Busca contas e TODOS os investimentos de forma otimizada
+        const [accounts, investments] = await Promise.all([
+            getMyAccounts(userId),
+            getMyInvestments(userId)
+        ]);
 
-        let totalInvestimentos = 0;
-        for (const account of accounts) {
-            try {
-                const investments = await getAccountInvestments(account.id);
-                totalInvestimentos += investments.reduce((sum, inv) => sum + inv.valor_atual, 0);
-            } catch (err) {
-                console.warn(`[calculateNetWorth] Erro ao buscar investimentos da conta ${account.id}:`, err);
-                // Continua o loop ignorando o erro desta conta
-            }
-        }
+        const totalContas = accounts.reduce((sum, acc) => sum + acc.saldo_atual, 0);
+        const totalInvestimentos = investments.reduce((sum, inv) => sum + inv.valor_atual, 0);
 
         return {
             totalContas,

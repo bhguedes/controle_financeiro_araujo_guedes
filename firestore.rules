@@ -7,14 +7,14 @@ service cloud.firestore {
     
     // Verifica se o usuário é o dono do documento
     function isOwner(data) {
-      return request.auth.uid == data.user_id || 
-             request.auth.uid == data.ownerId || 
-             request.auth.uid == data.owner_id;
+      return request.auth.uid == data.get('user_id', '') || 
+             request.auth.uid == data.get('ownerId', '') || 
+             request.auth.uid == data.get('owner_id', '');
     }
     
     // Verifica se o documento foi compartilhado com o usuário
     function isSharedWithMe(data) {
-      return request.auth.uid in data.shared_with_uids;
+      return request.auth.uid in data.get('shared_with_uids', []);
     }
 
     // Usuários: Dono pode ler/escrever seu próprio perfil
@@ -22,14 +22,17 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Famílias: Membros podem ler
+    // Famílias: Membros podem ler, Dono pode escrever, Convidados podem "entrar"
     match /families/{familyId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.owner_id || request.auth.uid in resource.data.member_ids);
-      allow write: if isAuthenticated() && request.auth.uid == resource.data.owner_id;
       allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.owner_id || 
+        (request.auth.uid in request.resource.data.member_ids && request.resource.data.member_ids.size() == resource.data.member_ids.size() + 1)
+      );
     }
     
-    // Convites: Público para ler (validar código), Dono da família para escrever
+    // Convites: Público para ler (validar código), Autenticado para criar/processar
     match /family_invitations/{invitationId} {
       allow read: if true; 
       allow write, create: if isAuthenticated();
@@ -38,14 +41,22 @@ service cloud.firestore {
     // Contas Bancárias
     match /bank_accounts/{accountId} {
       allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
-      allow write: if isAuthenticated() && isOwner(resource.data);
+      allow write: if isAuthenticated() && (
+        isOwner(resource.data) || 
+        isSharedWithMe(resource.data) ||
+        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+      );
       allow create: if isAuthenticated();
     }
 
     // Investimentos
     match /investments/{investmentId} {
       allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
-      allow write: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
+      allow write: if isAuthenticated() && (
+        isOwner(resource.data) || 
+        isSharedWithMe(resource.data) ||
+        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+      );
       allow create: if isAuthenticated();
     }
 
@@ -59,18 +70,20 @@ service cloud.firestore {
     // Cartões
     match /cards/{cardId} {
       allow read: if isAuthenticated() && (isOwner(resource.data) || isSharedWithMe(resource.data));
-      allow write: if isAuthenticated() && isOwner(resource.data);
+      allow write: if isAuthenticated() && (
+        isOwner(resource.data) || 
+        (request.auth.uid in request.resource.data.shared_with_uids && request.resource.data.shared_with_uids.size() == resource.data.shared_with_uids.size() + 1)
+      );
       allow create: if isAuthenticated();
       
       match /users_assigned/{memberId} { 
-        allow read: if isAuthenticated(); 
-        allow write: if isAuthenticated(); 
+        allow read, write: if isAuthenticated(); 
       }
     }
 
     // Transações
     match /transactions/{transactionId} {
-      allow read: if isAuthenticated(); // Transações precisam ser acessíveis pelos membros
+      allow read: if isAuthenticated(); 
       allow write, create: if isAuthenticated();
     }
   }

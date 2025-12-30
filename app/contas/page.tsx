@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import {
     getMyAccounts,
+    getMyInvestments,
     addBankAccount,
     updateBankAccount,
     deleteBankAccount,
@@ -95,23 +96,22 @@ export default function ContasPage() {
         if (!user) return;
         try {
             setLoading(true);
-            const userAccounts = await getMyAccounts(user.uid);
+            // Busca contas e TODOS os investimentos (próprios e compartilhados) simultaneamente
+            const [userAccounts, allInvestments] = await Promise.all([
+                getMyAccounts(user.uid),
+                getMyInvestments(user.uid)
+            ]);
+
             setAccounts(userAccounts);
 
-            // Carrega investimentos
+            // Mapeia os investimentos para suas respectivas contas localmente
             const investmentsMap: { [key: string]: Investment[] } = {};
-            for (const account of userAccounts) {
-                try {
-                    const accountInvestments = await getAccountInvestments(account.id);
-                    investmentsMap[account.id] = accountInvestments;
-                } catch (err) {
-                    console.warn(`Erro ao carregar investimentos da conta ${account.id}`, err);
-                    investmentsMap[account.id] = [];
-                }
-            }
+            userAccounts.forEach((account: BankAccount) => {
+                investmentsMap[account.id] = allInvestments.filter((inv: Investment) => inv.account_id === account.id);
+            });
             setInvestments(investmentsMap);
 
-            // Calcula patrimônio
+            // Calcula patrimônio de forma otimizada
             const worth = await calculateNetWorth(user.uid);
             setNetWorth(worth);
         } catch (error) {
