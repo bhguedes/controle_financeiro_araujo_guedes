@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { createOrUpdateUserProfile } from "@/services/userService";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,8 @@ import { UserPlus } from "lucide-react";
 
 export default function RegisterPage() {
     const router = useRouter();
+    const [nome, setNome] = useState("");
+    const [telefone, setTelefone] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -36,7 +39,16 @@ export default function RegisterPage() {
         setLoading(true);
 
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+            // Cria perfil com dados extras
+            await createOrUpdateUserProfile(
+                userCredential.user.uid,
+                email,
+                nome,
+                telefone
+            );
+
             router.push("/");
         } catch (error: any) {
             console.error("Erro ao criar conta:", error);
@@ -75,6 +87,20 @@ export default function RegisterPage() {
 
                     {/* Formulário */}
                     <form onSubmit={handleRegister} className="space-y-4">
+                        {/* Nome */}
+                        <div className="space-y-2">
+                            <Label htmlFor="nome">Nome Completo</Label>
+                            <Input
+                                id="nome"
+                                type="text"
+                                placeholder="Seu nome"
+                                value={nome}
+                                onChange={(e) => setNome(e.target.value)}
+                                required
+                                disabled={loading}
+                            />
+                        </div>
+
                         {/* Email */}
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
@@ -84,6 +110,20 @@ export default function RegisterPage() {
                                 placeholder="seu@email.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                required
+                                disabled={loading}
+                            />
+                        </div>
+
+                        {/* Telefone */}
+                        <div className="space-y-2">
+                            <Label htmlFor="telefone">Telefone / Celular</Label>
+                            <Input
+                                id="telefone"
+                                type="tel"
+                                placeholder="(11) 99999-9999"
+                                value={telefone}
+                                onChange={(e) => setTelefone(e.target.value)}
                                 required
                                 disabled={loading}
                             />

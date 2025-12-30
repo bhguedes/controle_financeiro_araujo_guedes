@@ -94,6 +94,15 @@ export default function LoginPage() {
                             />
                         </div>
 
+                        <div className="flex items-center justify-end">
+                            <Link
+                                href="/forgot-password"
+                                className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                            >
+                                Esqueci minha senha
+                            </Link>
+                        </div>
+
                         {/* Mensagem de Erro */}
                         {error && (
                             <div className="bg-red-50 border border-red-200 rounded-lg p-3">

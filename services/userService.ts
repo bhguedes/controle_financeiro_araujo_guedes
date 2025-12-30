@@ -23,7 +23,8 @@ import { UserProfile, FamilyRole } from "@/types";
 export const createOrUpdateUserProfile = async (
     uid: string,
     email: string,
-    nome?: string
+    nome?: string,
+    telefone?: string
 ): Promise<void> => {
     try {
         const userRef = doc(db, "users", uid);
@@ -35,6 +36,7 @@ export const createOrUpdateUserProfile = async (
                 uid,
                 email,
                 nome: nome || email.split("@")[0], // Usa parte do email como nome padrão
+                telefone: telefone || null,
                 created_at: Timestamp.now(),
                 updated_at: Timestamp.now(),
             });
