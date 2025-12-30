@@ -7,8 +7,8 @@ import { Navbar } from "@/components/Navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "Controle Financeiro Familiar",
-    description: "Sistema de gestão financeira com foco em cartões de crédito",
+    title: "Poupa+",
+    description: "Sistema de gestão financeira para famílias",
 };
 
 export default function RootLayout({

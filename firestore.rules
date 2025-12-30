@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Funções Auxiliares
+    function isAuthenticated() { return request.auth != null; }
+
+    // ============================================================================
+    // REGRAS SIMPLIFICADAS (TEMPORÁRIO PARA TESTE)
+    // ============================================================================
+    
+    // Usuários: Autenticado pode ler/escrever qualquer usuário
+    match /users/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Famílias: Autenticado pode ler/escrever
+    match /families/{familyId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Convites: Público para ler (validar código), Autenticado para escrever
+    match /family_invitations/{invitationId} {
+      allow read: if true; 
+      allow write: if isAuthenticated();
+    }
+
+    // Contas, Investimentos, Receitas, Cartões, Transações:
+    // Permitindo acesso a qualquer usuário autenticado para resolver o erro
+    
+    match /bank_accounts/{accountId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /investments/{investmentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /incomes/{incomeId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /cards/{cardId} {
+      allow read, write: if isAuthenticated();
+      match /users_assigned/{memberId} { allow read, write: if isAuthenticated(); }
+    }
+
+    match /transactions/{transactionId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

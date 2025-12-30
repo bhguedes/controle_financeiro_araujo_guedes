@@ -137,25 +137,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Botão Nova Saída */}
-                    {cards.length > 0 ? (
-                        <NewExpenseForm
-                            cards={cards}
-                            onSubmit={handleNewExpense}
-                            trigger={
-                                <Button size="lg" className="gap-2">
-                                    <PlusCircle className="h-5 w-5" />
-                                    Nova Saída
-                                </Button>
-                            }
-                        />
-                    ) : (
-                        <Link href="/cards">
-                            <Button size="lg" className="gap-2">
-                                <CreditCard className="h-5 w-5" />
-                                Cadastrar Cartão
-                            </Button>
-                        </Link>
-                    )}
+
                 </div>
 
                 {/* Cards de Resumo */}
@@ -164,7 +146,7 @@ export default function DashboardPage() {
                     <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-semibold text-slate-600">
-                                Total de Rendas
+                                Total de Receitas
                             </h3>
                             <TrendingUp className="h-5 w-5 text-green-600" />
                         </div>
@@ -286,10 +268,10 @@ export default function DashboardPage() {
                                             <div className="w-full bg-slate-200 rounded-full h-2">
                                                 <div
                                                     className={`h-2 rounded-full transition-all ${percentualUsado > 80
-                                                            ? "bg-red-500"
-                                                            : percentualUsado > 50
-                                                                ? "bg-orange-500"
-                                                                : "bg-green-500"
+                                                        ? "bg-red-500"
+                                                        : percentualUsado > 50
+                                                            ? "bg-orange-500"
+                                                            : "bg-green-500"
                                                         }`}
                                                     style={{ width: `${Math.min(percentualUsado, 100)}%` }}
                                                 />
@@ -341,8 +323,8 @@ export default function DashboardPage() {
                                         <div className="text-right ml-4">
                                             <p
                                                 className={`font-bold text-lg ${transaction.tipo === "RENDA"
-                                                        ? "text-green-600"
-                                                        : "text-red-600"
+                                                    ? "text-green-600"
+                                                    : "text-red-600"
                                                     }`}
                                             >
                                                 {transaction.tipo === "RENDA" ? "+" : "-"}R${" "}

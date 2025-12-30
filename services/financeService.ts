@@ -11,7 +11,7 @@ import {
     deleteDoc,
     Timestamp,
 } from "firebase/firestore";
-import { Card, Transaction, CardUser } from "@/types";
+import { Card, Transaction, CardUser, TransactionStatus } from "@/types";
 import { calcularMesFatura } from "@/lib/invoiceUtils";
 
 // ============================================
@@ -100,6 +100,47 @@ export const getMyCards = async (userId: string): Promise<Card[]> => {
         return cards;
     } catch (error) {
         console.error("Erro ao buscar cartões:", error);
+        throw error;
+    }
+};
+
+/**
+ * Busca um cartão específico pelo ID
+ */
+export const getCard = async (cardId: string): Promise<Card | null> => {
+    try {
+        const cardRef = doc(db, "cards", cardId);
+        const cardSnap = await getDoc(cardRef);
+
+        if (!cardSnap.exists()) {
+            return null;
+        }
+
+        const cardData = cardSnap.data();
+
+        // Busca os membros do cartão
+        const usersAssignedRef = collection(db, "cards", cardId, "users_assigned");
+        const usersSnapshot = await getDocs(usersAssignedRef);
+
+        const users_assigned: CardUser[] = usersSnapshot.docs.map((userDoc) => ({
+            id: userDoc.id,
+            nome: userDoc.data().nome,
+            card_id: cardId,
+            created_at: userDoc.data().created_at.toDate(),
+        }));
+
+        return {
+            id: cardSnap.id,
+            nome_cartao: cardData.nome_cartao,
+            limite: cardData.limite,
+            dia_fechamento: cardData.dia_fechamento,
+            dia_vencimento: cardData.dia_vencimento,
+            users_assigned,
+            created_at: cardData.created_at.toDate(),
+            updated_at: cardData.updated_at.toDate(),
+        } as Card;
+    } catch (error) {
+        console.error("Erro ao buscar cartão:", error);
         throw error;
     }
 };
@@ -200,32 +241,78 @@ export const addTransaction = async (
     transactionData: Omit<Transaction, "id" | "created_at" | "updated_at" | "user_id_criador">
 ): Promise<string> => {
     try {
-        let mesFatura: string | undefined;
+        const batch = [];
+        const isParcelado = transactionData.parcelado && transactionData.numero_parcelas && transactionData.numero_parcelas > 1;
+        const numParcelas = isParcelado ? transactionData.numero_parcelas! : 1;
+        const valorParcela = isParcelado ? transactionData.valor / numParcelas : transactionData.valor;
 
-        // Se for pagamento com cartão, calcula o mês da fatura
-        if (transactionData.card_id && transactionData.metodo_pagamento === "CARTAO_CREDITO") {
-            // Busca o cartão para pegar o dia de fechamento
-            const cardRef = doc(db, "cards", transactionData.card_id);
-            const cardSnap = await getDoc(cardRef);
+        // Gera um ID comum para agrupar as parcelas
+        const compraParceladaId = isParcelado ? doc(collection(db, "transactions")).id : undefined;
 
-            if (cardSnap.exists()) {
-                const cardData = cardSnap.data();
-                mesFatura = calcularMesFatura(
-                    transactionData.data,
-                    cardData.dia_fechamento
-                );
+        // Loop para criar transações (uma única vez se não for parcelado)
+        for (let i = 0; i < numParcelas; i++) {
+            let mesFatura: string | undefined;
+            const dataParcela = new Date(transactionData.data);
+
+            // Adiciona meses para as próximas parcelas
+            if (i > 0) {
+                dataParcela.setMonth(dataParcela.getMonth() + i);
             }
+
+            // Se for pagamento com cartão, calcula o mês da fatura para esta parcela
+            if (transactionData.card_id && transactionData.metodo_pagamento === "CARTAO_CREDITO") {
+                const cardRef = doc(db, "cards", transactionData.card_id);
+                const cardSnap = await getDoc(cardRef);
+
+                if (cardSnap.exists()) {
+                    const cardData = cardSnap.data();
+                    mesFatura = calcularMesFatura(
+                        dataParcela,
+                        cardData.dia_fechamento
+                    );
+                }
+            }
+
+            // Prepara descrição (ex: "Compra (1/3)")
+            const descricao = isParcelado
+                ? `${transactionData.descricao} (${i + 1}/${numParcelas})`
+                : transactionData.descricao;
+
+            // Salva a transação
+            const payload: any = {
+                ...transactionData,
+                descricao,
+                valor: isParcelado ? valorParcela : transactionData.valor,
+                data: Timestamp.fromDate(dataParcela),
+                parcelado: isParcelado,
+                compra_parcelada_id: compraParceladaId || null,
+                user_id_criador: userId,
+                status: transactionData.status || TransactionStatus.COMPLETED,
+                is_recurring: transactionData.is_recurring || false,
+                created_at: Timestamp.now(),
+                updated_at: Timestamp.now(),
+            };
+
+            if (transactionData.recurrence_id) {
+                payload.recurrence_id = transactionData.recurrence_id;
+            }
+
+            // Adiciona campos opcionais apenas se definidos
+            if (mesFatura) payload.mes_fatura = mesFatura;
+
+            if (isParcelado) {
+                payload.numero_parcelas = numParcelas;
+                payload.parcela_atual = i + 1;
+                payload.valor_parcela = valorParcela;
+            }
+
+            // Remove campos undefined que vieram de transactionData
+            Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+            await addDoc(collection(db, "transactions"), payload);
         }
 
-        const transactionRef = await addDoc(collection(db, "transactions"), {
-            ...transactionData,
-            mes_fatura: mesFatura,
-            user_id_criador: userId,
-            created_at: Timestamp.now(),
-            updated_at: Timestamp.now(),
-        });
-
-        return transactionRef.id;
+        return compraParceladaId || "success";
     } catch (error) {
         console.error("Erro ao adicionar transação:", error);
         throw error;

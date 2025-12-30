@@ -350,7 +350,8 @@ export default function CardsPage() {
                         {cards.map((card) => (
                             <div
                                 key={card.id}
-                                className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow"
+                                onClick={() => router.push(`/cards/${card.id}`)}
+                                className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer relative group"
                             >
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex items-center gap-2">
@@ -362,7 +363,10 @@ export default function CardsPage() {
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => handleDeleteCard(card.id, card.nome_cartao)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteCard(card.id, card.nome_cartao);
+                                        }}
                                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                     >
                                         <Trash2 className="h-4 w-4" />

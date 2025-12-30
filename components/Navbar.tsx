@@ -9,18 +9,45 @@ import { useRouter, usePathname } from "next/navigation";
 import {
     Home,
     CreditCard,
+    DollarSign,
+    Wallet,
+    Settings,
     LogOut,
     User,
     Menu,
     X,
+    Leaf,
+    PieChart,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getUserProfile } from "@/services/userService";
+import { checkAndApplyMonthlyReturns } from "@/services/accountService";
 
 export function Navbar() {
     const { user } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [userName, setUserName] = useState<string>("");
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            if (user?.uid) {
+                try {
+                    if (user.displayName) setUserName(user.displayName);
+                    const profile = await getUserProfile(user.uid);
+                    if (profile?.nome) {
+                        setUserName(profile.nome);
+                    }
+                    // Check for automated investment returns
+                    await checkAndApplyMonthlyReturns(user.uid);
+                } catch (e) {
+                    console.error("Erro ao carregar perfil/dados no Navbar:", e);
+                }
+            }
+        };
+        loadProfile();
+    }, [user]);
 
     const handleLogout = async () => {
         try {
@@ -42,9 +69,11 @@ export function Navbar() {
                 <div className="flex justify-between items-center h-16">
                     {/* Logo */}
                     <Link href="/" className="flex items-center gap-2">
-                        <div className="text-2xl">💰</div>
-                        <span className="font-bold text-slate-900 text-lg hidden sm:block">
-                            Controle Financeiro
+                        <div className="bg-emerald-100 p-1.5 rounded-lg flex items-center justify-center">
+                            <Leaf className="h-5 w-5 text-emerald-600" />
+                        </div>
+                        <span className="font-bold text-slate-800 text-xl tracking-tight hidden sm:block font-sans">
+                            Poupa+
                         </span>
                     </Link>
 
@@ -69,7 +98,7 @@ export function Navbar() {
                                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                                     }`}
                             >
-                                <Home className="h-4 w-4" />
+                                <PieChart className="h-4 w-4" />
                                 Dashboard
                             </Link>
 
@@ -84,17 +113,56 @@ export function Navbar() {
                                 Cartões
                             </Link>
 
+                            <Link
+                                href="/despesas"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/despesas"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                            >
+                                <DollarSign className="h-4 w-4" />
+                                Despesas
+                            </Link>
+
+                            <Link
+                                href="/receitas"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/receitas"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                            >
+                                <DollarSign className="h-4 w-4" />
+                                Receitas
+                            </Link>
+
+                            <Link
+                                href="/contas"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/contas"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                            >
+                                <Wallet className="h-4 w-4" />
+                                Contas
+                            </Link>
+
                             <div className="flex items-center gap-3 ml-4 pl-4 border-l border-slate-200">
-                                <div className="flex items-center gap-2 text-sm text-slate-600">
-                                    <User className="h-4 w-4" />
-                                    <span className="hidden lg:block">{user.email}</span>
-                                </div>
+                                <Link
+                                    href="/configuracoes"
+                                    className="flex items-center gap-2 text-sm text-slate-800 hover:text-emerald-700 font-medium hover:bg-slate-50 p-2 rounded-lg transition-colors group"
+                                    title="Ir para Configurações"
+                                >
+                                    <div className="bg-slate-100 p-1 rounded-full group-hover:bg-emerald-100 transition-colors">
+                                        <User className="h-4 w-4 group-hover:text-emerald-600" />
+                                    </div>
+                                    <span className="hidden lg:block">{userName || user.email}</span>
+                                </Link>
 
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={handleLogout}
-                                    className="gap-2"
+                                    className="gap-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
                                 >
                                     <LogOut className="h-4 w-4" />
                                     Sair
@@ -140,8 +208,8 @@ export function Navbar() {
                                 href="/"
                                 onClick={() => setMobileMenuOpen(false)}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/"
-                                        ? "bg-blue-50 text-blue-700 font-semibold"
-                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                                     }`}
                             >
                                 <Home className="h-4 w-4" />
@@ -152,11 +220,11 @@ export function Navbar() {
                                 href="/dashboard"
                                 onClick={() => setMobileMenuOpen(false)}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/dashboard"
-                                        ? "bg-blue-50 text-blue-700 font-semibold"
-                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                                     }`}
                             >
-                                <Home className="h-4 w-4" />
+                                <PieChart className="h-4 w-4" />
                                 Dashboard
                             </Link>
 
@@ -164,19 +232,38 @@ export function Navbar() {
                                 href="/cards"
                                 onClick={() => setMobileMenuOpen(false)}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/cards"
-                                        ? "bg-blue-50 text-blue-700 font-semibold"
-                                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                                     }`}
                             >
                                 <CreditCard className="h-4 w-4" />
                                 Cartões
                             </Link>
 
+                            <Link
+                                href="/receitas"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${pathname === "/receitas"
+                                    ? "bg-blue-50 text-blue-700 font-semibold"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                    }`}
+                            >
+                                <DollarSign className="h-4 w-4" />
+                                Receitas
+                            </Link>
+
                             <div className="border-t border-slate-200 mt-2 pt-2">
-                                <div className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600">
-                                    <User className="h-4 w-4" />
-                                    {user.email}
-                                </div>
+                                <Link
+                                    href="/configuracoes"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-emerald-700 hover:bg-slate-50 rounded-lg transition-colors mb-2"
+                                >
+                                    <div className="bg-slate-100 p-1 rounded-full">
+                                        <User className="h-4 w-4 text-slate-500" />
+                                    </div>
+                                    <span className="font-medium">{userName || user.email}</span>
+                                    <span className="text-xs text-slate-400 ml-auto">Configurações</span>
+                                </Link>
 
                                 <Button
                                     variant="ghost"

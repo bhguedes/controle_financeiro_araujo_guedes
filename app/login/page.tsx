@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { LogIn } from "lucide-react";
+import { LogIn, Leaf } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -48,16 +48,16 @@ export default function LoginPage() {
     };
 
     return (
-        <main className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-purple-50 flex items-center justify-center p-4">
+        <main className="min-h-screen bg-gradient-to-br from-emerald-50 via-slate-50 to-teal-50 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 <div className="bg-white rounded-2xl shadow-2xl p-8">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                            <LogIn className="h-8 w-8 text-blue-600" />
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 rounded-full mb-4">
+                            <Leaf className="h-8 w-8 text-emerald-600" />
                         </div>
                         <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                            Bem-vindo de volta!
+                            Bem-vindo ao Poupa+
                         </h1>
                         <p className="text-slate-600">
                             Faça login para acessar seu controle financeiro
@@ -104,7 +104,7 @@ export default function LoginPage() {
                         {/* Botão de Login */}
                         <Button
                             type="submit"
-                            className="w-full"
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                             size="lg"
                             disabled={loading}
                         >
@@ -118,7 +118,7 @@ export default function LoginPage() {
                             Não tem uma conta?{" "}
                             <Link
                                 href="/register"
-                                className="text-blue-600 hover:text-blue-700 font-semibold"
+                                className="text-emerald-600 hover:text-emerald-700 font-semibold"
                             >
                                 Criar conta
                             </Link>
@@ -129,7 +129,7 @@ export default function LoginPage() {
                 {/* Footer */}
                 <div className="mt-6 text-center">
                     <p className="text-sm text-slate-500">
-                        💰 Controle Financeiro Familiar
+                        Poupa+ • Seu futuro financeiro
                     </p>
                 </div>
             </div>

@@ -57,19 +57,19 @@ export default function RegisterPage() {
     };
 
     return (
-        <main className="min-h-screen bg-gradient-to-br from-purple-50 via-slate-50 to-blue-50 flex items-center justify-center p-4">
+        <main className="min-h-screen bg-gradient-to-br from-emerald-50 via-slate-50 to-teal-50 flex items-center justify-center p-4">
             <div className="w-full max-w-md">
                 <div className="bg-white rounded-2xl shadow-2xl p-8">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
-                            <UserPlus className="h-8 w-8 text-purple-600" />
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 rounded-full mb-4">
+                            <UserPlus className="h-8 w-8 text-emerald-600" />
                         </div>
                         <h1 className="text-3xl font-bold text-slate-900 mb-2">
                             Criar Conta
                         </h1>
                         <p className="text-slate-600">
-                            Comece a gerenciar suas finanças hoje mesmo
+                            Comece a poupar com o Poupa+ hoje mesmo
                         </p>
                     </div>
 
@@ -130,7 +130,7 @@ export default function RegisterPage() {
                         {/* Botão de Registro */}
                         <Button
                             type="submit"
-                            className="w-full"
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                             size="lg"
                             disabled={loading}
                         >
@@ -144,7 +144,7 @@ export default function RegisterPage() {
                             Já tem uma conta?{" "}
                             <Link
                                 href="/login"
-                                className="text-purple-600 hover:text-purple-700 font-semibold"
+                                className="text-emerald-600 hover:text-emerald-700 font-semibold"
                             >
                                 Fazer login
                             </Link>
@@ -155,7 +155,7 @@ export default function RegisterPage() {
                 {/* Footer */}
                 <div className="mt-6 text-center">
                     <p className="text-sm text-slate-500">
-                        💰 Controle Financeiro Familiar
+                        Poupa+ • Seu futuro financeiro
                     </p>
                 </div>
             </div>
