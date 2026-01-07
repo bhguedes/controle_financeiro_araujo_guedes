@@ -388,6 +388,34 @@ export const addTransaction = async (
             ? transactionData.compra_parcelada_id || doc(collection(db, "transactions")).id
             : undefined;
 
+        // Pré-cálculo da Fatura Inicial para garantir sequencialidade
+        let initialInvoiceDate: Date | null = null;
+
+        if (transactionData.card_id && transactionData.metodo_pagamento === "CARTAO_CREDITO") {
+            if (transactionData.mes_fatura) {
+                // Se já veio mês da fatura (Importação), usa como base. Assumimos dia 1.
+                // Formato esperado: "YYYY-MM"
+                const [y, m] = transactionData.mes_fatura.split('-').map(Number);
+                initialInvoiceDate = new Date(y, m - 1, 1);
+            } else {
+                // Busca dados do cartão para calcular
+                const cardRef = doc(db, "cards", transactionData.card_id);
+                const cardSnap = await getDoc(cardRef);
+
+                if (cardSnap.exists()) {
+                    const cardData = cardSnap.data();
+                    const baseDate = new Date(transactionData.data);
+
+                    // Lógica de fechamento
+                    if (baseDate.getDate() > cardData.dia_fechamento) {
+                        initialInvoiceDate = addMonths(baseDate, 1);
+                    } else {
+                        initialInvoiceDate = baseDate;
+                    }
+                }
+            }
+        }
+
         // Loop: de startP até endP
         // Ex: Importou 4/12. startP=4, endP=12. Loop 4, 5... 12.
         for (let p = startP; p <= endP; p++) {
@@ -406,24 +434,16 @@ export const addTransaction = async (
 
             const currentDate = addMonths(safeDate, monthOffset);
 
-            // Se for pagamento com cartão, calcula o mês da fatura para esta parcela
-            if (transactionData.card_id && transactionData.metodo_pagamento === "CARTAO_CREDITO") {
-                // Se for a primeira parcela sendo criada (offset 0) e já veio o mês da fatura (importação), usa ele.
-                // Mas se for as futuras (offset > 0), TEM que recalcular, pois muda o mês.
-                if (monthOffset === 0 && transactionData.mes_fatura) {
-                    mesFatura = transactionData.mes_fatura;
-                } else {
-                    const cardRef = doc(db, "cards", transactionData.card_id);
-                    const cardSnap = await getDoc(cardRef);
+            // --- CÁLCULO DE FATURA SEQUENCIAL ---
+            // Se temos uma data base de fatura, incrementamos meses a partir dela
+            if (initialInvoiceDate) {
+                // Sequencial: Fatura Base + Posição
+                // Se p=1, offset=0.
+                const invoiceDateForInstallment = addMonths(initialInvoiceDate, monthOffset);
 
-                    if (cardSnap.exists()) {
-                        const cardData = cardSnap.data();
-                        mesFatura = calcularMesFatura(
-                            currentDate,
-                            cardData.dia_fechamento
-                        );
-                    }
-                }
+                const y = invoiceDateForInstallment.getFullYear();
+                const m = String(invoiceDateForInstallment.getMonth() + 1).padStart(2, '0');
+                mesFatura = `${y}-${m}`;
             }
 
             // Prepara descrição
