@@ -3,7 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { addCard, getMyCards, deleteCard } from "@/services/financeService";
+import {
+    addCard,
+    getMyCards,
+    updateCard,
+    deleteCard,
+    addCardMember,
+    removeCardMember,
+    updateCardMember
+} from "@/services/financeService";
 import { Card } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +25,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-import { PlusCircle, CreditCard, Trash2, Users, X } from "lucide-react";
+import { PlusCircle, CreditCard, Trash2, Users, X, Pencil } from "lucide-react";
 
 export default function CardsPage() {
     const { user } = useAuth();
@@ -27,11 +35,12 @@ export default function CardsPage() {
     const [open, setOpen] = useState(false);
 
     // Estados do formulário
+    const [editingCardId, setEditingCardId] = useState<string | null>(null);
     const [nomeCartao, setNomeCartao] = useState("");
     const [limite, setLimite] = useState("");
     const [diaFechamento, setDiaFechamento] = useState("");
     const [diaVencimento, setDiaVencimento] = useState("");
-    const [members, setMembers] = useState<string[]>([""]);
+    const [members, setMembers] = useState<{ id?: string; nome: string }[]>([{ nome: "" }]);
     const [submitting, setSubmitting] = useState(false);
 
     // Carrega os cartões ao montar o componente
@@ -56,8 +65,31 @@ export default function CardsPage() {
         }
     };
 
+    const handleOpenDialog = (cardToEdit?: Card) => {
+        if (cardToEdit) {
+            setEditingCardId(cardToEdit.id);
+            setNomeCartao(cardToEdit.nome_cartao);
+            setLimite(cardToEdit.limite.toString());
+            setDiaFechamento(cardToEdit.dia_fechamento.toString());
+            setDiaVencimento(cardToEdit.dia_vencimento.toString());
+            // Preenche membros (ou um vazio se não tiver nenhum)
+            const loadedMembers = cardToEdit.users_assigned && cardToEdit.users_assigned.length > 0
+                ? cardToEdit.users_assigned.map(u => ({ id: u.id, nome: u.nome }))
+                : [{ nome: "" }];
+            setMembers(loadedMembers);
+        } else {
+            setEditingCardId(null);
+            setNomeCartao("");
+            setLimite("");
+            setDiaFechamento("");
+            setDiaVencimento("");
+            setMembers([{ nome: "" }]);
+        }
+        setOpen(true);
+    };
+
     const handleAddMember = () => {
-        setMembers([...members, ""]);
+        setMembers([...members, { nome: "" }]);
     };
 
     const handleRemoveMember = (index: number) => {
@@ -67,7 +99,7 @@ export default function CardsPage() {
 
     const handleMemberChange = (index: number, value: string) => {
         const newMembers = [...members];
-        newMembers[index] = value;
+        newMembers[index].nome = value;
         setMembers(newMembers);
     };
 
@@ -75,7 +107,7 @@ export default function CardsPage() {
         e.preventDefault();
 
         if (!user) {
-            alert("Você precisa estar logado para cadastrar um cartão.");
+            alert("Você precisa estar logado para gerenciar cartões.");
             return;
         }
 
@@ -93,53 +125,74 @@ export default function CardsPage() {
         const diaFech = parseInt(diaFechamento);
         const diaVenc = parseInt(diaVencimento);
 
-        if (diaFech < 1 || diaFech > 31) {
-            alert("Dia de fechamento deve estar entre 1 e 31.");
+        if (diaFech < 1 || diaFech > 31 || diaVenc < 1 || diaVenc > 31) {
+            alert("Dia de fechamento/vencimento e inválido.");
             return;
         }
 
-        if (diaVenc < 1 || diaVenc > 31) {
-            alert("Dia de vencimento deve estar entre 1 e 31.");
-            return;
-        }
-
-        // Filtra membros vazios
-        const validMembers = members.filter((m) => m.trim() !== "");
-
-        // if (validMembers.length === 0) {
-        //     alert("Adicione pelo menos um membro ao cartão.");
-        //     return;
-        // }
+        // Filtra membros vazios para envio (apenas nomes)
+        const validMembers = members.filter((m) => m.nome.trim() !== "");
 
         try {
             setSubmitting(true);
 
-            await addCard(
-                user.uid,
-                {
+            if (editingCardId) {
+                // UPDATE MODE
+                await updateCard(editingCardId, {
                     nome_cartao: nomeCartao,
                     limite: parseFloat(limite),
                     dia_fechamento: diaFech,
                     dia_vencimento: diaVenc,
-                },
-                validMembers
-            );
+                });
 
-            // Reseta o formulário
-            setNomeCartao("");
-            setLimite("");
-            setDiaFechamento("");
-            setDiaVencimento("");
-            setMembers([""]);
+                // Sync Members
+                const originalCard = cards.find(c => c.id === editingCardId);
+                if (originalCard) {
+                    const originalMembers = originalCard.users_assigned || [];
+
+                    // 1. Remove Deleted Members (Present in Original, Missing in Form)
+                    const currentMemberIds = validMembers.map(m => m.id).filter(Boolean);
+                    const toDelete = originalMembers.filter(om => !currentMemberIds.includes(om.id));
+                    for (const del of toDelete) {
+                        await removeCardMember(editingCardId, del.id);
+                    }
+
+                    // 2. Add New Members (No ID) & Update Existing (Has ID)
+                    for (const m of validMembers) {
+                        if (m.id) {
+                            // Check if name changed
+                            const original = originalMembers.find(om => om.id === m.id);
+                            if (original && original.nome !== m.nome) {
+                                await updateCardMember(editingCardId, m.id, m.nome);
+                            }
+                        } else {
+                            await addCardMember(editingCardId, m.nome);
+                        }
+                    }
+                }
+                alert("Cartão atualizado com sucesso!");
+
+            } else {
+                // CREATE MODE
+                await addCard(
+                    user.uid,
+                    {
+                        nome_cartao: nomeCartao,
+                        limite: parseFloat(limite),
+                        dia_fechamento: diaFech,
+                        dia_vencimento: diaVenc,
+                    },
+                    validMembers.map(m => m.nome) // Pass string array for creation
+                );
+                alert("Cartão cadastrado com sucesso!");
+            }
+
             setOpen(false);
-
-            // Recarrega os cartões
             await loadCards();
 
-            alert("Cartão cadastrado com sucesso!");
         } catch (error) {
-            console.error("Erro ao cadastrar cartão:", error);
-            alert("Erro ao cadastrar cartão. Verifique o console.");
+            console.error("Erro ao salvar cartão:", error);
+            alert("Erro ao salvar cartão. Verifique o console.");
         } finally {
             setSubmitting(false);
         }
@@ -179,19 +232,21 @@ export default function CardsPage() {
                         </p>
                     </div>
 
-                    <Dialog open={open} onOpenChange={setOpen}>
+                    <Dialog open={open} onOpenChange={(isOpen) => {
+                        if (!isOpen) setOpen(false);
+                        // don't reset on close implementation detail usually handled by state clear on open
+                    }}>
                         <DialogTrigger asChild>
-                            <Button className="gap-2">
+                            <Button className="gap-2" onClick={() => handleOpenDialog()}>
                                 <PlusCircle className="h-5 w-5" />
                                 Novo Cartão
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                             <DialogHeader>
-                                <DialogTitle>Cadastrar Novo Cartão</DialogTitle>
+                                <DialogTitle>{editingCardId ? "Editar Cartão" : "Cadastrar Novo Cartão"}</DialogTitle>
                                 <DialogDescription>
-                                    Preencha os dados do cartão e adicione os membros que podem
-                                    utilizá-lo.
+                                    Preencha os dados do cartão e gerencie os membros que podem utilizá-lo.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -261,7 +316,7 @@ export default function CardsPage() {
                                 {/* Membros */}
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                        <Label>Membros do Cartão *</Label>
+                                        <Label>Membros do Cartão</Label>
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -278,27 +333,21 @@ export default function CardsPage() {
                                         {members.map((member, index) => (
                                             <div key={index} className="flex gap-2">
                                                 <Input
-                                                    placeholder={`Ex: ${index === 0
-                                                        ? "Esposa"
-                                                        : index === 1
-                                                            ? "Marido"
-                                                            : `Membro ${index + 1}`
-                                                        }`}
-                                                    value={member}
+                                                    placeholder={`Nome do Membro`}
+                                                    value={member.nome}
                                                     onChange={(e) =>
                                                         handleMemberChange(index, e.target.value)
                                                     }
                                                 />
-                                                {members.length > 1 && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleRemoveMember(index)}
-                                                    >
-                                                        <X className="h-4 w-4" />
-                                                    </Button>
-                                                )}
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleRemoveMember(index)}
+                                                    className="text-slate-400 hover:text-red-500"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
                                             </div>
                                         ))}
                                     </div>
@@ -318,7 +367,7 @@ export default function CardsPage() {
                                         Cancelar
                                     </Button>
                                     <Button type="submit" disabled={submitting}>
-                                        {submitting ? "Salvando..." : "Salvar Cartão"}
+                                        {submitting ? "Salvando..." : (editingCardId ? "Salvar Alterações" : "Criar Cartão")}
                                     </Button>
                                 </DialogFooter>
                             </form>
@@ -340,7 +389,7 @@ export default function CardsPage() {
                         <p className="text-slate-600 mb-6">
                             Comece cadastrando seu primeiro cartão de crédito
                         </p>
-                        <Button onClick={() => setOpen(true)} className="gap-2">
+                        <Button onClick={() => handleOpenDialog()} className="gap-2">
                             <PlusCircle className="h-5 w-5" />
                             Cadastrar Primeiro Cartão
                         </Button>
@@ -360,17 +409,26 @@ export default function CardsPage() {
                                             {card.nome_cartao}
                                         </h3>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteCard(card.id, card.nome_cartao);
-                                        }}
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleOpenDialog(card)}
+                                            className="text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                            title="Editar Cartão"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleDeleteCard(card.id, card.nome_cartao)}
+                                            className="text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                            title="Excluir Cartão"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2 mb-4">
@@ -398,11 +456,11 @@ export default function CardsPage() {
                                     <div className="flex items-center gap-2 mb-2">
                                         <Users className="h-4 w-4 text-slate-600" />
                                         <span className="text-sm font-semibold text-slate-700">
-                                            Membros ({card.users_assigned.length})
+                                            Membros ({card.users_assigned?.length || 0})
                                         </span>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {card.users_assigned.map((user) => (
+                                        {card.users_assigned?.map((user) => (
                                             <span
                                                 key={user.id}
                                                 className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"

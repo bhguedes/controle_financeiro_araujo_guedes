@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { getMyTransactions, addTransaction, updateTransaction, deleteTransaction, processRecurringExpenses } from "@/services/financeService";
+import { getMyTransactions, addTransaction, updateTransaction, deleteTransaction, processRecurringExpenses, deleteTransactionsBulk } from "@/services/financeService";
 import { getMyCards } from "@/services/financeService";
 import { getMyAccounts } from "@/services/accountService";
 import { NewExpenseForm } from "@/components/NewExpenseForm";
 import { Card, BankAccount, Transaction, TransactionType, TransactionStatus, TransactionFormData, CategoryLabels, PaymentMethodLabels } from "@/types";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertCircle, Pencil, Trash2, PlusCircle, Filter, Users, CreditCard } from "lucide-react";
+import { CheckCircle2, AlertCircle, Pencil, Trash2, PlusCircle, Filter, Users, CreditCard, ListChecks, XCircle } from "lucide-react";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CsvImporter } from "@/components/CsvImporter";
@@ -33,6 +33,10 @@ export default function DespesasPage() {
     const [viewMode, setViewMode] = useState<'monthly' | 'history'>('monthly');
     const [selectedDate, setSelectedDate] = useState(new Date());
 
+    // Selection Mode
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
     useEffect(() => {
         if (user) {
             loadData();
@@ -54,11 +58,8 @@ export default function DespesasPage() {
             setCards(myCards);
             setAccounts(myAccounts);
 
-            // Process Recurring Expenses (Fixed Accounts) for the selected month to ensure they appear
             await processRecurringExpenses(user.uid, selectedDate);
 
-            // Store ALL transactions raw, we filter in render time based on viewMode
-            // Sort by date desc
             const sorted = myTransactions.sort((a, b) => b.data.getTime() - a.data.getTime());
             setTransactions(sorted);
         } catch (error) {
@@ -92,9 +93,8 @@ export default function DespesasPage() {
         try {
             await addTransaction(user.uid, {
                 ...data,
-                tipo: TransactionType.VARIAVEL, // Default to variable, form might override? No, form provides category etc.
-                // expense form usually implies expense.
-                status: TransactionStatus.COMPLETED // Default to completed unless specified
+                tipo: TransactionType.VARIAVEL,
+                status: TransactionStatus.COMPLETED
             });
             loadData();
         } catch (error) {
@@ -118,7 +118,7 @@ export default function DespesasPage() {
     const handleDelete = async (t: Transaction) => {
         if (!confirm("Tem certeza que deseja excluir esta despesa?")) return;
         try {
-            await deleteTransaction(t.id); // Assuming simple delete. If installment, might ask to delete all.
+            await deleteTransaction(t.id);
             loadData();
         } catch (error) {
             console.error("Error deleting transaction:", error);
@@ -134,37 +134,91 @@ export default function DespesasPage() {
         }
     };
 
+    // Bulk Actions
+    const toggleSelection = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleSelectAll = (ids: string[]) => {
+        if (selectedIds.length === ids.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(ids);
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        let title = `Tem certeza que deseja excluir ${selectedIds.length} transações? Esta ação não pode ser desfeita.`;
+        let idsToDelete = [...selectedIds];
+
+        // Se estiver no modo histórico, check for grouped items to Cascade Delete
+        if (viewMode === 'history') {
+            const extraIds: string[] = [];
+            selectedIds.forEach(id => {
+                const t = transactions.find(x => x.id === id);
+                if (t?.parcelado && t.compra_parcelada_id) {
+                    // Encontrar irmãos ocultos (same purchase ID)
+                    const siblings = transactions.filter(x => x.compra_parcelada_id === t.compra_parcelada_id && x.id !== id);
+                    siblings.forEach(s => extraIds.push(s.id));
+                }
+            });
+
+            if (extraIds.length > 0) {
+                idsToDelete = [...idsToDelete, ...extraIds];
+                title = `Atenção: Você selecionou compras parceladas no Modo Histórico.\n\nIsso excluirá TODAS as ${idsToDelete.length} parcelas vinculadas a estas compras (incluindo as de outros meses).\n\nDeseja continuar?`;
+            }
+        }
+
+        if (!confirm(title)) return;
+
+        try {
+            setLoading(true);
+            const uniqueIds = Array.from(new Set(idsToDelete));
+            await deleteTransactionsBulk(uniqueIds);
+            setSelectedIds([]);
+            setIsSelectionMode(false);
+            await loadData();
+            alert("Transações excluídas com sucesso!");
+        } catch (error) {
+            console.error("Erro ao excluir em massa:", error);
+            alert("Erro ao excluir transações. Verifique o console.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Filter Logic
     const pendingTransactions = transactions
         .filter(t => t.status === TransactionStatus.PENDING)
         .filter(t => filterCard === "all" || t.card_id === filterCard)
-        .filter(t => filterMember === "all" || t.user_id_gasto === filterMember || t.user_id_criador === filterMember);
+        .filter(t => filterMember === "all" || t.user_id_gasto === filterMember || t.user_id_criador === filterMember)
+        .filter(t => {
+            if (viewMode === 'monthly') {
+                return t.data.getMonth() === selectedDate.getMonth() &&
+                    t.data.getFullYear() === selectedDate.getFullYear();
+            }
+            return true;
+        });
 
-    // Completed Transactions Logic (Dynamic based on ViewMode)
     let displayedTransactions = transactions
         .filter(t => t.status !== TransactionStatus.PENDING)
         .filter(t => filterCard === "all" || t.card_id === filterCard)
         .filter(t => filterMember === "all" || t.user_id_gasto === filterMember || t.user_id_criador === filterMember);
 
     if (viewMode === 'monthly') {
-        // Filter by selected Main/Year
         displayedTransactions = displayedTransactions.filter(t =>
             t.data.getMonth() === selectedDate.getMonth() &&
             t.data.getFullYear() === selectedDate.getFullYear()
         );
-        // Do NOT consolidate installments. Show them as is.
     } else {
-        // 'history': Consolidate installments
         const groupedTransactions: { [key: string]: Transaction } = {};
         const singleTransactions: Transaction[] = [];
 
         displayedTransactions.forEach(t => {
             if (t.parcelado && t.compra_parcelada_id) {
                 const existing = groupedTransactions[t.compra_parcelada_id];
-                // Try to find the "head" (first installment) to represent the purchase
-                // Or simply the earliest one in the dataset? 
-                // To represent the purchase in history, ideally we show the FIRST one (1/N).
-                // Or if we don't have it (deleted?), the earliest available.
                 if (!existing || t.data < existing.data) {
                     groupedTransactions[t.compra_parcelada_id] = t;
                 }
@@ -189,19 +243,32 @@ export default function DespesasPage() {
                     </div>
 
                     <div className="flex gap-2">
-                        <CsvImporter cards={cards} onSuccess={loadData} />
-
-                        <NewExpenseForm
-                            cards={cards}
-                            accounts={accounts}
-                            onSubmit={handleNewExpense}
-                            trigger={
-                                <Button className="gap-2 bg-red-600 hover:bg-red-700">
-                                    <PlusCircle className="h-4 w-4" />
-                                    Nova Despesa
-                                </Button>
-                            }
-                        />
+                        {isSelectionMode && selectedIds.length > 0 ? (
+                            <Button
+                                variant="destructive"
+                                className="gap-2 animate-in fade-in"
+                                onClick={handleBulkDelete}
+                                disabled={loading}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir ({selectedIds.length})
+                            </Button>
+                        ) : (
+                            <>
+                                <CsvImporter cards={cards} onSuccess={loadData} />
+                                <NewExpenseForm
+                                    cards={cards}
+                                    accounts={accounts}
+                                    onSubmit={handleNewExpense}
+                                    trigger={
+                                        <Button className="gap-2 bg-red-600 hover:bg-red-700">
+                                            <PlusCircle className="h-4 w-4" />
+                                            Nova Despesa
+                                        </Button>
+                                    }
+                                />
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -238,20 +305,34 @@ export default function DespesasPage() {
                         </div>
                     </div>
 
-                    {/* Toggle Mode */}
-                    <div className="flex bg-white rounded-xl shadow-sm border border-slate-100 p-1">
-                        <button
-                            onClick={() => setViewMode('monthly')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'monthly' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                    {/* Toggle Mode & Selection */}
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant={isSelectionMode ? "secondary" : "outline"}
+                            onClick={() => {
+                                setIsSelectionMode(!isSelectionMode);
+                                setSelectedIds([]);
+                            }}
+                            className={`gap-2 ${isSelectionMode ? 'bg-slate-200' : 'bg-white'}`}
                         >
-                            Mensal
-                        </button>
-                        <button
-                            onClick={() => setViewMode('history')}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'history' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                        >
-                            Histórico
-                        </button>
+                            {isSelectionMode ? <XCircle className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
+                            {isSelectionMode ? "Cancelar" : "Selecionar"}
+                        </Button>
+
+                        <div className="flex bg-white rounded-xl shadow-sm border border-slate-100 p-1">
+                            <button
+                                onClick={() => setViewMode('monthly')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'monthly' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                Mensal
+                            </button>
+                            <button
+                                onClick={() => setViewMode('history')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'history' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                Histórico
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -273,48 +354,64 @@ export default function DespesasPage() {
                 {/* Pendentes */}
                 {pendingTransactions.length > 0 && (
                     <div className="mb-8 p-4 bg-orange-50 rounded-xl border border-orange-100">
-                        {/* ... (Keep pending content unchanged) ... */}
                         <h2 className="text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
                             <AlertCircle className="h-5 w-5" />
                             Pendentes de Confirmação
                         </h2>
                         <div className="space-y-3">
                             {pendingTransactions.map(t => (
-                                <div key={t.id} className="bg-white p-4 rounded-lg shadow-sm border border-orange-200 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-slate-900">{t.descricao}</p>
-                                        <p className="text-sm text-slate-500">
-                                            {format(t.data, "dd 'de' MMMM", { locale: ptBR })} • {CategoryLabels[t.categoria]}
-                                        </p>
-                                        <p className="font-bold text-slate-900 mt-1">
-                                            R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                        </p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => setEditingTransaction(t)}
-                                            className="text-slate-400 hover:text-blue-600"
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => handleDelete(t)}
-                                            className="text-slate-400 hover:text-red-600"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            className="bg-green-600 hover:bg-green-700 ml-2"
-                                            onClick={() => handleConfirmTransaction(t)}
-                                        >
-                                            <CheckCircle2 className="h-4 w-4 mr-1" />
-                                            Confirmar
-                                        </Button>
+                                <div
+                                    key={t.id}
+                                    className={`bg-white p-4 rounded-lg shadow-sm border border-orange-200 flex items-center gap-3 transition-colors ${isSelectionMode ? 'cursor-pointer hover:bg-orange-50' : ''}`}
+                                    onClick={() => isSelectionMode && toggleSelection(t.id)}
+                                >
+                                    {isSelectionMode && (
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.includes(t.id)}
+                                            readOnly
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600"
+                                        />
+                                    )}
+                                    <div className="flex-1 flex justify-between items-center">
+                                        <div>
+                                            <p className="font-medium text-slate-900">{t.descricao}</p>
+                                            <p className="text-sm text-slate-500">
+                                                {format(t.data, "dd 'de' MMMM", { locale: ptBR })} • {CategoryLabels[t.categoria]}
+                                            </p>
+                                            <p className="font-bold text-slate-900 mt-1">
+                                                R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                            </p>
+                                        </div>
+
+                                        {!isSelectionMode && (
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={(e) => { e.stopPropagation(); setEditingTransaction(t); }}
+                                                    className="text-slate-400 hover:text-blue-600"
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(t); }}
+                                                    className="text-slate-400 hover:text-red-600"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-green-600 hover:bg-green-700 ml-2"
+                                                    onClick={(e) => { e.stopPropagation(); handleConfirmTransaction(t); }}
+                                                >
+                                                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                                                    Confirmar
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -325,12 +422,23 @@ export default function DespesasPage() {
                 {/* Lista de Transações */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <h2 className="text-xl font-semibold text-slate-800">
-                            {viewMode === 'monthly' ? `Gastos de ${format(selectedDate, "MMMM", { locale: ptBR })}` : 'Histórico Completo'}
-                        </h2>
+                        <div className="flex items-center gap-3">
+                            {isSelectionMode && (
+                                <input
+                                    type="checkbox"
+                                    checked={displayedTransactions.length > 0 && selectedIds.length === displayedTransactions.length} // Simplificacao para demo
+                                    onChange={() => handleSelectAll(displayedTransactions.map(t => t.id))}
+                                    className="h-5 w-5 rounded border-slate-300"
+                                    title="Selecionar Todos Visíveis"
+                                />
+                            )}
+                            <h2 className="text-xl font-semibold text-slate-800">
+                                {viewMode === 'monthly' ? `Gastos de ${format(selectedDate, "MMMM", { locale: ptBR })}` : 'Histórico Completo'}
+                            </h2>
+                        </div>
                         {viewMode === 'monthly' && (
                             <span className="text-sm font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                                Total: R$ {displayedTransactions.reduce((acc, t) => acc + t.valor, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                Total: R$ {displayedTransactions.reduce((acc, t) => acc + (t.tipo === TransactionType.RENDA ? -t.valor : t.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                             </span>
                         )}
                     </div>
@@ -343,12 +451,7 @@ export default function DespesasPage() {
                         </div>
                     ) : (
                         displayedTransactions.map(t => {
-                            // Display Logic
                             const isParceladoReview = viewMode === 'history' && t.parcelado && (t.numero_parcelas || 0) > 1;
-
-                            // In History Mode: Show Total Value and "Parcela X/Y" (calculated)
-                            // In Monthly Mode: Show Installment Value and "Parcela X/Y" (static from DB)
-
                             let displayValue = t.valor;
                             let installmentText = null;
 
@@ -358,62 +461,76 @@ export default function DespesasPage() {
                                     installmentText = `Parcela ${getInstallmentInfo(t)}`;
                                 }
                             } else {
-                                // Monthly Mode
                                 if (t.parcelado) {
-                                    // Show exact installment
                                     installmentText = `Parcela ${t.parcela_atual}/${t.numero_parcelas}`;
                                 }
                             }
 
                             return (
-                                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center group hover:shadow-md transition-shadow">
-                                    <div className="flex-1">
-                                        <p className="font-medium text-slate-900">{t.descricao}</p>
-                                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                                            <span>{format(t.data, "dd/MM/yyyy", { locale: ptBR })}</span>
-                                            <span>•</span>
-                                            <span>{CategoryLabels[t.categoria]}</span>
-                                            {installmentText && (
-                                                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex items-center border border-blue-100 font-medium">
-                                                    {installmentText}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="text-right flex items-center gap-4">
-                                        <div>
-                                            <p className="font-bold text-red-600">
-                                                - R$ {displayValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                            </p>
-                                            <p className="text-xs text-slate-400">
-                                                {PaymentMethodLabels[t.metodo_pagamento]}
-                                            </p>
+                                <div
+                                    key={t.id}
+                                    className={`bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 group hover:shadow-md transition-shadow ${isSelectionMode ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                                    onClick={() => isSelectionMode && toggleSelection(t.id)}
+                                >
+                                    {isSelectionMode && (
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.includes(t.id)}
+                                            readOnly
+                                            className="h-5 w-5 rounded border-slate-300 text-blue-600"
+                                        />
+                                    )}
+                                    <div className="flex-1 flex justify-between items-center">
+                                        <div className="flex-1">
+                                            <p className="font-medium text-slate-900">{t.descricao}</p>
+                                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                                                <span>{format(t.data, "dd/MM/yyyy", { locale: ptBR })}</span>
+                                                <span>•</span>
+                                                <span>{CategoryLabels[t.categoria]}</span>
+                                                {installmentText && (
+                                                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded flex items-center border border-blue-100 font-medium">
+                                                        {installmentText}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
-                                        {/* Ações */}
-                                        <div className="flex flex-col items-end gap-1">
-                                            <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    onClick={() => setEditingTransaction(t)}
-                                                    className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    onClick={() => handleDelete(t)}
-                                                    className="h-8 w-8 text-slate-400 hover:text-red-600"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                        <div className="text-right flex items-center gap-4">
+                                            <div>
+                                                <p className={`font-bold ${t.tipo === TransactionType.RENDA ? "text-green-600" : "text-red-600"}`}>
+                                                    {t.tipo === TransactionType.RENDA ? "+" : "-"} R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                                </p>
+                                                <p className="text-xs text-slate-400">
+                                                    {PaymentMethodLabels[t.metodo_pagamento]}
+                                                </p>
                                             </div>
-                                            {t.user_id_gasto && (
-                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded italic">
-                                                    {cards.flatMap(c => c.users_assigned || []).find(m => m.id === t.user_id_gasto)?.nome || "Membro"}
-                                                </span>
+
+                                            {!isSelectionMode && (
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={(e) => { e.stopPropagation(); setEditingTransaction(t); }}
+                                                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(t); }}
+                                                            className="h-8 w-8 text-slate-400 hover:text-red-600"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                    {t.user_id_gasto && (
+                                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded italic">
+                                                            {cards.flatMap(c => c.users_assigned || []).find(m => m.id === t.user_id_gasto)?.nome || "Membro"}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     </div>

@@ -10,6 +10,7 @@ import {
     where,
     updateDoc,
     deleteDoc,
+    writeBatch,
     Timestamp,
 } from "firebase/firestore";
 import { Card, Transaction, CardUser, TransactionStatus } from "@/types";
@@ -272,6 +273,26 @@ export const removeCardMember = async (
     }
 };
 
+/**
+ * Atualiza o nome de um membro do cartão
+ */
+export const updateCardMember = async (
+    cardId: string,
+    memberId: string,
+    newName: string
+): Promise<void> => {
+    try {
+        const memberRef = doc(db, "cards", cardId, "users_assigned", memberId);
+        await updateDoc(memberRef, {
+            nome: newName,
+            // updated_at: Timestamp.now(), // Membros simples podem não ter este campo, mas ok enviar
+        });
+    } catch (error) {
+        console.error("Erro ao atualizar membro:", error);
+        throw error;
+    }
+};
+
 // ============================================
 // FUNÇÕES DE TRANSAÇÕES
 // ============================================
@@ -282,6 +303,8 @@ export const removeCardMember = async (
  */
 export const processRecurringExpenses = async (userId: string, targetDate: Date = new Date()): Promise<void> => {
     try {
+        console.log(`[processRecurringExpenses] Starting for user ${userId} and date ${targetDate.toISOString()}`);
+
         // 1. Busca todas as despesas marcadas como recorrentes (Modelos)
         const qRecurring = query(
             collection(db, "transactions"),
@@ -292,6 +315,8 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
         );
 
         const recurringSnap = await getDocs(qRecurring);
+        console.log(`[processRecurringExpenses] Found ${recurringSnap.size} recurring models.`);
+
         if (recurringSnap.empty) return;
 
         // 2. Para cada despesa recorrente, verifica se já existe uma cópia para o mês alvo
@@ -308,7 +333,10 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
             // Adianta para dia 1 do mês alvo para comparação segura (ignora dia)
             const dSafe = new Date(modelData);
             dSafe.setHours(12, 0, 0, 0); // Normalize time
-            if (dSafe > addMonths(targetDate, 1)) continue;
+            if (dSafe > addMonths(targetDate, 1)) {
+                console.log(`[processRecurringExpenses] Skipping ${model.descricao}: Created ${dSafe.toISOString()} > Target + 1 month`);
+                continue;
+            }
 
             const targetMonth = targetDate.getMonth();
             const targetYear = targetDate.getFullYear();
@@ -328,6 +356,8 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
                 return dData.getMonth() === targetMonth && dData.getFullYear() === targetYear;
             });
 
+            console.log(`[processRecurringExpenses] Model '${model.descricao}' ID: ${docModel.id}. Already generated for ${targetMonth + 1}/${targetYear}? ${alreadyGenerated}`);
+
             if (!alreadyGenerated) {
                 // Gera a nova despesa
                 // FIX: Prevent overflow for EOM dates (e.g. 31st) -> Clip to last day of month
@@ -336,9 +366,11 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
 
                 const newDate = new Date(targetYear, targetMonth, dayToSet, 12, 0, 0);
 
+                // Safe clone without ID
+                const { id: _ignoredId, ...modelSafe } = model as any;
+
                 await addDoc(collection(db, "transactions"), {
-                    ...model,
-                    id: undefined, // Remove ID original
+                    ...modelSafe,
                     data: Timestamp.fromDate(newDate),
                     is_recurring: false, // Instância não é o modelo recorrente
                     recurrence_id: docModel.id, // Link com o pai
@@ -346,7 +378,7 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
                     created_at: Timestamp.now(),
                     updated_at: Timestamp.now()
                 });
-                console.log(`Gerada despesa recorrente: ${model.descricao} para ${targetMonth + 1}/${targetYear}`);
+                console.log(`[processRecurringExpenses] GENERATED: ${model.descricao} para ${targetMonth + 1}/${targetYear}`);
             }
         }
     } catch (error) {
@@ -359,7 +391,8 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
  */
 export const addTransaction = async (
     userId: string,
-    transactionData: Omit<Transaction, "id" | "created_at" | "updated_at" | "user_id_criador">
+    transactionData: Omit<Transaction, "id" | "created_at" | "updated_at" | "user_id_criador">,
+    options?: { generate_future_installments?: boolean; use_purchase_date_logic?: boolean }
 ): Promise<string> => {
     try {
         const isParcelado = transactionData.parcelado && transactionData.numero_parcelas && transactionData.numero_parcelas > 1;
@@ -367,8 +400,12 @@ export const addTransaction = async (
         // Se parcela_atual for fornecida (importação), usamos ela como início. Senão começa da 1.
         const startP = (typeof transactionData.parcela_atual === 'number') ? transactionData.parcela_atual : 1;
 
-        // Se for parcelado, vai até o total. Se não, vai até 1 (ou até startP se por algum motivo bizarro for > 1 mas não parcelado)
-        const endP = isParcelado ? transactionData.numero_parcelas! : 1;
+        // Configuração: Gerar parcelas futuras? (Default: true)
+        // Se False (ex: Importação CSV), cria apenas o registro atual, sem projetar o futuro.
+        const generateFuture = options?.generate_future_installments !== false;
+
+        // Se for parcelado e flag ativa, vai até o total. Se não, gera apenas a parcela atual (startP).
+        const endP = (isParcelado && generateFuture) ? transactionData.numero_parcelas! : startP;
 
         // Se for importação:
         // O valor que vem no transactionData é o valor da parcela (ex: R$ 100 de 1000).
@@ -422,17 +459,23 @@ export const addTransaction = async (
             let mesFatura: string | undefined;
 
             // O offset de mês é relativo ao primeiro item que estamos criando.
-            // Se estamos criando o item 4 (data X), o item 5 será X + 1 mês.
-            // i = p - startP (0, 1, 2...)
-            const monthOffset = p - startP;
+            // Se use_purchase_date_logic=true, transactionData.data é Data da Compra (P=1). Offset = p-1.
+            // Se false, transactionData.data é Data da Parcela Inicial (P=startP). Offset = p-startP.
+            const isPurchaseDateLogic = options?.use_purchase_date_logic || false;
+            const monthOffset = isPurchaseDateLogic ? (p - 1) : (p - startP);
 
             // Usa date-fns para adicionar meses com segurança
             // FIX: Normalize date to noon to prevent timezone skipping (e.g. Jan 31 -> Mar 3)
             const baseDate = new Date(transactionData.data);
+
+            // Debug Log for Date Shift
+            console.log(`[addTransaction] Loop ${p}/${endP}. Input Data: ${transactionData.data} (Type: ${typeof transactionData.data}). BaseDate: ${baseDate.toISOString()}`);
+
             // Create a safe date object (noon)
             const safeDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0);
 
             const currentDate = addMonths(safeDate, monthOffset);
+            console.log(`[addTransaction] SafeDate: ${safeDate.toISOString()}, CurrentDate: ${currentDate.toISOString()}`);
 
             // --- CÁLCULO DE FATURA SEQUENCIAL ---
             // Se temos uma data base de fatura, incrementamos meses a partir dela
@@ -461,7 +504,8 @@ export const addTransaction = async (
                 compra_parcelada_id: compraParceladaId || null,
                 user_id_criador: userId,
                 status: transactionData.status || TransactionStatus.COMPLETED,
-                is_recurring: transactionData.is_recurring || false,
+                // Transações parceladas NÃO devem ser recorrentes (para evitar duplicação por processRecurringExpenses)
+                is_recurring: isParcelado ? false : (transactionData.is_recurring || false),
                 created_at: Timestamp.now(),
                 updated_at: Timestamp.now(),
             };
@@ -480,6 +524,9 @@ export const addTransaction = async (
 
             // Remove campos undefined
             Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+            // Garantir que ID não existe no payload (Firestore erro: Unsupported field value: undefined found in field id)
+            if ('id' in payload) delete payload.id;
 
             await addDoc(collection(db, "transactions"), payload);
         }
@@ -662,6 +709,23 @@ export const deleteTransaction = async (transactionId: string): Promise<void> =>
         await deleteDoc(transactionRef);
     } catch (error) {
         console.error("Erro ao deletar transação:", error);
+        throw error;
+    }
+};
+export const deleteTransactionsBulk = async (transactionIds: string[]): Promise<void> => {
+    try {
+        const chunkSize = 500;
+        for (let i = 0; i < transactionIds.length; i += chunkSize) {
+            const chunk = transactionIds.slice(i, i + chunkSize);
+            const batch = writeBatch(db);
+            chunk.forEach(id => {
+                const ref = doc(db, "transactions", id);
+                batch.delete(ref);
+            });
+            await batch.commit();
+        }
+    } catch (error) {
+        console.error("Erro ao deletar transações em massa:", error);
         throw error;
     }
 };

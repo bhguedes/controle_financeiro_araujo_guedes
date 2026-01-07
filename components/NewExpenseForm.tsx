@@ -227,13 +227,24 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
     };
 
     const handleFormSubmit = (data: ExpenseFormValues) => {
-        // Ajusta a data para o meio-dia local para evitar problemas de fuso horário ao salvar no Firebase
-        const adjustedDate = new Date(data.data);
-        adjustedDate.setHours(12, 0, 0, 0);
+        // Correção de Fuso Horário:
+        // O input type="date" retorna 00:00 UTC. No Brasil (UTC-3), isso vira 21:00 do dia anterior.
+        // Para manter o dia selecionado corretamente, extraímos os componentes UTC e criamos a data Local ao meio-dia.
+        const inputDate = data.data;
+        const adjustedDate = new Date(
+            inputDate.getUTCFullYear(),
+            inputDate.getUTCMonth(),
+            inputDate.getUTCDate(),
+            12, 0, 0, 0
+        );
+
+        // Se for CONTA_FIXA, marca automaticamente como recorrente
+        const isRecurring = data.tipo === TransactionType.CONTA_FIXA;
 
         onSubmit({
             ...data,
-            data: adjustedDate
+            data: adjustedDate,
+            is_recurring: isRecurring
         });
         setOpen(false);
         reset();
