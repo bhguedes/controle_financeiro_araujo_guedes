@@ -58,11 +58,26 @@ export const getMyAccounts = async (userId: string): Promise<BankAccount[]> => {
         const q3 = query(collection(db, "bank_accounts"), where("owner_id", "==", userId));
         const q4 = query(collection(db, "bank_accounts"), where("shared_with_uids", "array-contains", userId));
 
+        console.log(`[DEBUG] Executing getMyAccounts for userId: ${userId}`);
+
+        const executeQuery = async (q: any, name: string) => {
+            try {
+                const snap = await getDocs(q);
+                console.log(`[DEBUG] ${name} success: ${snap.size} docs`);
+                return snap;
+            } catch (e: any) {
+                console.error(`[DEBUG] ${name} FAILED:`, e.code, e.message);
+                // Retornamos um snapshot vazio para não quebrar o Promise.all, 
+                // mas logamos o erro para saber qual falhou.
+                return { docs: [] } as any;
+            }
+        };
+
         const [snap1, snap2, snap3, snap4] = await Promise.all([
-            getDocs(q1),
-            getDocs(q2),
-            getDocs(q3),
-            getDocs(q4)
+            executeQuery(q1, "q1 (user_id)"),
+            executeQuery(q2, "q2 (ownerId)"),
+            executeQuery(q3, "q3 (owner_id)"),
+            executeQuery(q4, "q4 (shared_with_uids)")
         ]);
 
         const docs = [...snap1.docs];
@@ -232,42 +247,90 @@ export const getAccountInvestments = async (accountId: string, userId?: string):
     try {
         let q;
         if (userId) {
-            // Se temos o userId, fazemos uma busca mais segura que evita o erro de permissão
-            // em casos onde o usuário não é o dono primário do investimento mas tem acesso via shared_with_uids
-            q = query(
+            // Buscamos investimentos vinculados à conta que o usuário tem acesso (dono ou compartilhado)
+            const q1 = query(
                 collection(db, "investments"),
-                where("account_id", "==", accountId)
+                where("account_id", "==", accountId),
+                where("user_id", "==", userId)
             );
-            // Nota: O Firestore vai filtrar isso pelas regras de segurança. 
-            // Se o usuário tiver permissão (isOwner ou isShared), ele verá os docs.
+            const q2 = query(
+                collection(db, "investments"),
+                where("account_id", "==", accountId),
+                where("ownerId", "==", userId)
+            );
+            const q3 = query(
+                collection(db, "investments"),
+                where("account_id", "==", accountId),
+                where("owner_id", "==", userId)
+            );
+            const q4 = query(
+                collection(db, "investments"),
+                where("account_id", "==", accountId),
+                where("shared_with_uids", "array-contains", userId)
+            );
+
+            const [snap1, snap2, snap3, snap4] = await Promise.all([
+                getDocs(q1),
+                getDocs(q2),
+                getDocs(q3),
+                getDocs(q4)
+            ]);
+
+            const docs = [...snap1.docs];
+            [...snap2.docs, ...snap3.docs, ...snap4.docs].forEach(d => {
+                if (!docs.find(existing => existing.id === d.id)) {
+                    docs.push(d);
+                }
+            });
+
+            return docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    account_id: data.account_id,
+                    user_id: data.user_id || data.ownerId || data.owner_id,
+                    tipo: data.tipo as InvestmentType,
+                    nome: data.nome,
+                    valor_investido: data.valor_investido,
+                    valor_atual: data.valor_atual,
+                    rentabilidade: data.rentabilidade,
+                    taxa_fixa_mensal: data.taxa_fixa_mensal,
+                    aporte_mensal: data.aporte_mensal,
+                    last_calculation_date: data.last_calculation_date?.toDate(),
+                    data_aplicacao: data.data_aplicacao?.toDate(),
+                    shared_with_uids: data.shared_with_uids,
+                    created_at: data.created_at?.toDate(),
+                    updated_at: data.updated_at?.toDate(),
+                };
+            }) as any;
         } else {
+            // Se não houver userId, tentamos a busca geral (pode falhar por permissão se for conta compartilhada)
             q = query(
                 collection(db, "investments"),
                 where("account_id", "==", accountId)
             );
+            const querySnapshot = await getDocs(q);
+            return querySnapshot.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    account_id: data.account_id,
+                    user_id: data.user_id || data.ownerId || data.owner_id,
+                    tipo: data.tipo as InvestmentType,
+                    nome: data.nome,
+                    valor_investido: data.valor_investido,
+                    valor_atual: data.valor_atual,
+                    rentabilidade: data.rentabilidade,
+                    taxa_fixa_mensal: data.taxa_fixa_mensal,
+                    aporte_mensal: data.aporte_mensal,
+                    last_calculation_date: data.last_calculation_date?.toDate(),
+                    data_aplicacao: data.data_aplicacao?.toDate(),
+                    shared_with_uids: data.shared_with_uids,
+                    created_at: data.created_at?.toDate(),
+                    updated_at: data.updated_at?.toDate(),
+                };
+            }) as any;
         }
-
-        const querySnapshot = await getDocs(q);
-
-        return querySnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                account_id: data.account_id,
-                user_id: data.user_id || data.ownerId || data.owner_id,
-                tipo: data.tipo as InvestmentType,
-                nome: data.nome,
-                valor_investido: data.valor_investido,
-                valor_atual: data.valor_atual,
-                rentabilidade: data.rentabilidade,
-                taxa_fixa_mensal: data.taxa_fixa_mensal,
-                aporte_mensal: data.aporte_mensal,
-                last_calculation_date: data.last_calculation_date?.toDate(),
-                data_aplicacao: data.data_aplicacao.toDate(),
-                created_at: data.created_at.toDate(),
-                updated_at: data.updated_at.toDate(),
-            };
-        });
     } catch (error) {
         console.error("Erro ao buscar investimentos:", error);
         throw error;
@@ -417,7 +480,7 @@ export const checkAndApplyMonthlyReturns = async (userId: string): Promise<void>
         const accounts = await getMyAccounts(userId);
 
         for (const account of accounts) {
-            const investments = await getAccountInvestments(account.id);
+            const investments = await getAccountInvestments(account.id, userId);
 
             for (const inv of investments) {
                 if (inv.taxa_fixa_mensal && inv.taxa_fixa_mensal > 0) {

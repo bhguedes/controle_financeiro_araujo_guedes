@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -119,10 +120,29 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
     // Derived values
     const selectedCard = useMemo(() => cards.find(c => c.id === formValues.card_id), [cards, formValues.card_id]);
     const selectedAccount = useMemo(() => accounts.find(a => a.id === formValues.account_id), [accounts, formValues.account_id]);
-    const cardMembers = useMemo(() => selectedCard?.users_assigned || [], [selectedCard]);
+
+    const { user } = useAuth();
+
+    const cardMembers = useMemo(() => {
+        const members = selectedCard?.users_assigned || [];
+        if (user) {
+            // Create a "You" entry
+            const me: CardUser = {
+                id: user.uid,
+                nome: "Eu (Titular)",
+                card_id: selectedCard?.id || "",
+                created_at: new Date()
+            };
+
+            // Filter out if I'm already in the list (to avoid duplicates) and prepend "Me"
+            return [me, ...members.filter(m => m.id !== user.uid)];
+        }
+        return members;
+    }, [selectedCard, user]);
 
     useEffect(() => {
         if (open) {
+            // ... (rest of effect)
             setStep(0);
             setDirection(0);
             if (initialData) {

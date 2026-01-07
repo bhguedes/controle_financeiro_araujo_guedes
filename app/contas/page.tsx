@@ -65,6 +65,7 @@ export default function ContasPage() {
     const [investmentModalOpen, setInvestmentModalOpen] = useState(false);
     const [simulatorModalOpen, setSimulatorModalOpen] = useState(false);
     const [selectedAccountId, setSelectedAccountId] = useState("");
+    const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
 
     // Form states - Account (Removed, handled by NewAccountForm)
 
@@ -464,6 +465,13 @@ export default function ContasPage() {
                                         <Button
                                             variant="ghost"
                                             size="sm"
+                                            onClick={() => setEditingAccount(account)}
+                                        >
+                                            <Edit className="h-4 w-4 text-blue-600" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
                                             onClick={() => handleDeleteAccount(account.id, account.nome_banco)}
                                         >
                                             <Trash2 className="h-4 w-4 text-red-600" />
@@ -501,6 +509,91 @@ export default function ContasPage() {
                         ))
                     )}
                 </div>
+
+                {/* Modal de Edição de Conta */}
+                <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Editar Conta</DialogTitle>
+                        </DialogHeader>
+                        {editingAccount && (
+                            <form
+                                onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    if (!user || !editingAccount) return;
+                                    try {
+                                        await updateBankAccount(editingAccount.id, {
+                                            nome_banco: editingAccount.nome_banco,
+                                            tipo_conta: editingAccount.tipo_conta,
+                                            saldo_atual: editingAccount.saldo_atual,
+                                            is_shared: editingAccount.is_shared
+                                        });
+                                        alert("Conta atualizada!");
+                                        setEditingAccount(null);
+                                        loadData();
+                                    } catch (error) {
+                                        console.error("Erro ao atualizar conta:", error);
+                                        alert("Erro ao atualizar conta.");
+                                    }
+                                }}
+                                className="space-y-4"
+                            >
+                                <div className="space-y-2">
+                                    <Label>Nome do Banco</Label>
+                                    <Input
+                                        value={editingAccount.nome_banco}
+                                        onChange={(e) => setEditingAccount({ ...editingAccount, nome_banco: e.target.value })}
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Tipo de Conta</Label>
+                                    <Select
+                                        value={editingAccount.tipo_conta}
+                                        onValueChange={(v) => setEditingAccount({ ...editingAccount, tipo_conta: v as AccountType })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Object.values(AccountType).map((type) => (
+                                                <SelectItem key={type} value={type}>
+                                                    {AccountTypeLabels[type]}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Saldo Atual (R$)</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={editingAccount.saldo_atual}
+                                        onChange={(e) => setEditingAccount({ ...editingAccount, saldo_atual: parseFloat(e.target.value) })}
+                                        required
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="edit_shared"
+                                        checked={editingAccount.is_shared}
+                                        onChange={(e) => setEditingAccount({ ...editingAccount, is_shared: e.target.checked })}
+                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <Label htmlFor="edit_shared">Compartilhar com a família</Label>
+                                </div>
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setEditingAccount(null)}>
+                                        Cancelar
+                                    </Button>
+                                    <Button type="submit">Salvar Alterações</Button>
+                                </DialogFooter>
+                            </form>
+                        )}
+                    </DialogContent>
+                </Dialog>
 
                 {/* Modal de Investimento */}
                 <Dialog open={investmentModalOpen} onOpenChange={setInvestmentModalOpen}>
