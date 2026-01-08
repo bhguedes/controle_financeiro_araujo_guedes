@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { getMyTransactions, addTransaction, updateTransaction, deleteTransaction, processRecurringExpenses, deleteTransactionsBulk, updateTransactionsBulkMember } from "@/services/financeService";
+import { getMyTransactions, addTransaction, updateTransaction, deleteTransaction, processRecurringExpenses, deleteTransactionsBulk, updateTransactionsBulkMember, assignMemberToPurchase } from "@/services/financeService";
 import { getMyCards } from "@/services/financeService";
 import { getMyAccounts } from "@/services/accountService";
 import { NewExpenseForm } from "@/components/NewExpenseForm";
@@ -194,7 +194,8 @@ export default function DespesasPage() {
     const handleAssignMember = async (memberId: string) => {
         if (!assignTarget) return;
         try {
-            await updateTransaction(assignTarget.id, { user_id_gasto: memberId });
+            // Use new service to propagate to all installments if applicable
+            await assignMemberToPurchase(assignTarget.id, memberId);
             loadData(true);
             setIsAssignOpen(false);
             setAssignTarget(null);

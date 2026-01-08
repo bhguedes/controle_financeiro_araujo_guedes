@@ -743,3 +743,42 @@ export const updateTransactionsBulkMember = async (transactionIds: string[], use
         throw error;
     }
 };
+
+export const assignMemberToPurchase = async (transactionId: string, memberId: string): Promise<void> => {
+    try {
+        const transRef = doc(db, "transactions", transactionId);
+        const transSnap = await getDoc(transRef);
+
+        if (!transSnap.exists()) throw new Error("Transaction not found");
+
+        const data = transSnap.data();
+        const compraParceladaId = data.compra_parcelada_id;
+
+        if (compraParceladaId) {
+            // Update ALL installments associated with this purchase
+            const q = query(
+                collection(db, "transactions"),
+                where("compra_parcelada_id", "==", compraParceladaId)
+            );
+            const querySnapshot = await getDocs(q);
+
+            const batch = writeBatch(db);
+            querySnapshot.docs.forEach(doc => {
+                batch.update(doc.ref, {
+                    user_id_gasto: memberId,
+                    updated_at: new Date()
+                });
+            });
+            await batch.commit();
+        } else {
+            // Single transaction update
+            await updateDoc(transRef, {
+                user_id_gasto: memberId,
+                updated_at: new Date()
+            });
+        }
+    } catch (error) {
+        console.error("Error assigning member to purchase:", error);
+        throw error;
+    }
+};
