@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { format } from "date-fns";
 import {
     Dialog,
     DialogContent,
@@ -102,6 +103,7 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
         setValue,
         reset,
         trigger: validateField,
+        control,
         formState: { errors },
     } = useForm<ExpenseFormValues>({
         resolver: zodResolver(expenseSchema),
@@ -241,8 +243,18 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
         // Se for CONTA_FIXA, marca automaticamente como recorrente
         const isRecurring = data.tipo === TransactionType.CONTA_FIXA;
 
-        onSubmit({
+        // Sanitize undefined values (Firestore rejects undefined)
+        const sanitizedData = {
             ...data,
+            user_id_gasto: data.user_id_gasto ?? null,
+            card_id: data.card_id ?? null,
+            account_id: data.account_id ?? null,
+            parcelado: data.parcelado ?? false,
+            numero_parcelas: data.numero_parcelas ?? null,
+        };
+
+        onSubmit({
+            ...sanitizedData,
             data: adjustedDate,
             is_recurring: isRecurring
         });
@@ -323,10 +335,17 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
 
                                 <div className="w-full">
                                     <Label className="text-slate-500 mb-2 block text-center">Quando?</Label>
-                                    <Input
-                                        type="date"
-                                        className="text-lg h-14 text-center bg-white border-slate-200 rounded-xl"
-                                        {...register("data", { valueAsDate: true })}
+                                    <Controller
+                                        control={control}
+                                        name="data"
+                                        render={({ field }) => (
+                                            <Input
+                                                type="date"
+                                                className="text-lg h-14 text-center bg-white border-slate-200 rounded-xl"
+                                                value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
+                                                onChange={(e) => field.onChange(e.target.valueAsDate)}
+                                            />
+                                        )}
                                     />
                                     {errors.data && <p className="text-red-500 text-sm mt-1 text-center">{errors.data.message}</p>}
                                 </div>
@@ -340,7 +359,6 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
                                     <Label className="text-center block text-slate-500">Tipo de Despesa</Label>
                                     <div className="grid grid-cols-2 gap-4">
                                         {Object.values(TransactionType)
-                                            .filter(t => t !== TransactionType.RENDA)
                                             .map((type) => (
                                                 <div
                                                     key={type}

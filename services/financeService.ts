@@ -392,20 +392,26 @@ export const processRecurringExpenses = async (userId: string, targetDate: Date 
 export const addTransaction = async (
     userId: string,
     transactionData: Omit<Transaction, "id" | "created_at" | "updated_at" | "user_id_criador">,
-    options?: { generate_future_installments?: boolean; use_purchase_date_logic?: boolean }
+    options?: { generate_future_installments?: boolean; use_purchase_date_logic?: boolean; backfill_past_installments?: boolean }
 ): Promise<string> => {
     try {
         const isParcelado = transactionData.parcelado && transactionData.numero_parcelas && transactionData.numero_parcelas > 1;
 
-        // Se parcela_atual for fornecida (importação), usamos ela como início. Senão começa da 1.
-        const startP = (typeof transactionData.parcela_atual === 'number') ? transactionData.parcela_atual : 1;
+        // Se parcela_atual for fornecida (importação), usamos ela como âncora. Senão assume 1.
+        const inputP = (typeof transactionData.parcela_atual === 'number') ? transactionData.parcela_atual : 1;
+
+        // Se flag backfill ativa, começa da 1. Senão começa da inputP.
+        const startP = options?.backfill_past_installments ? 1 : inputP;
 
         // Configuração: Gerar parcelas futuras? (Default: true)
         // Se False (ex: Importação CSV), cria apenas o registro atual, sem projetar o futuro.
         const generateFuture = options?.generate_future_installments !== false;
 
         // Se for parcelado e flag ativa, vai até o total. Se não, gera apenas a parcela atual (startP).
-        const endP = (isParcelado && generateFuture) ? transactionData.numero_parcelas! : startP;
+        // Se generateFuture=false, mas backfill=true? Geralmente queremos apenas o range solicitado.
+        // Mas se generateFuture=false, endP não deve passar de inputP (ou startP?).
+        // Ajuste: Se generateFuture=false, endP = inputP. 
+        const endP = (isParcelado && generateFuture) ? transactionData.numero_parcelas! : inputP;
 
         // Se for importação:
         // O valor que vem no transactionData é o valor da parcela (ex: R$ 100 de 1000).
@@ -418,7 +424,7 @@ export const addTransaction = async (
             valorParcela = transactionData.valor;
         } else {
             // Criação manual: divide o valor total
-            valorParcela = isParcelado ? (transactionData.valor / endP) : transactionData.valor;
+            valorParcela = isParcelado ? (transactionData.valor / transactionData.numero_parcelas!) : transactionData.valor;
         }
 
         const compraParceladaId = isParcelado
@@ -428,22 +434,17 @@ export const addTransaction = async (
         // Pré-cálculo da Fatura Inicial para garantir sequencialidade
         let initialInvoiceDate: Date | null = null;
 
+        // ... (Invoice Logic Unchanged) ...
         if (transactionData.card_id && transactionData.metodo_pagamento === "CARTAO_CREDITO") {
             if (transactionData.mes_fatura) {
-                // Se já veio mês da fatura (Importação), usa como base. Assumimos dia 1.
-                // Formato esperado: "YYYY-MM"
                 const [y, m] = transactionData.mes_fatura.split('-').map(Number);
                 initialInvoiceDate = new Date(y, m - 1, 1);
             } else {
-                // Busca dados do cartão para calcular
                 const cardRef = doc(db, "cards", transactionData.card_id);
                 const cardSnap = await getDoc(cardRef);
-
                 if (cardSnap.exists()) {
                     const cardData = cardSnap.data();
                     const baseDate = new Date(transactionData.data);
-
-                    // Lógica de fechamento
                     if (baseDate.getDate() > cardData.dia_fechamento) {
                         initialInvoiceDate = addMonths(baseDate, 1);
                     } else {
@@ -454,15 +455,14 @@ export const addTransaction = async (
         }
 
         // Loop: de startP até endP
-        // Ex: Importou 4/12. startP=4, endP=12. Loop 4, 5... 12.
         for (let p = startP; p <= endP; p++) {
             let mesFatura: string | undefined;
 
-            // O offset de mês é relativo ao primeiro item que estamos criando.
-            // Se use_purchase_date_logic=true, transactionData.data é Data da Compra (P=1). Offset = p-1.
-            // Se false, transactionData.data é Data da Parcela Inicial (P=startP). Offset = p-startP.
+            // O offset de mês é relativo à âncora (inputP).
+            // Se use_purchase_date_logic=true (Data = Parcela 1), offset = p-1.
+            // Se use_purchase_date_logic=false (Data = Parcela inputP), offset = p-inputP.
             const isPurchaseDateLogic = options?.use_purchase_date_logic || false;
-            const monthOffset = isPurchaseDateLogic ? (p - 1) : (p - startP);
+            const monthOffset = isPurchaseDateLogic ? (p - 1) : (p - inputP);
 
             // Usa date-fns para adicionar meses com segurança
             // FIX: Normalize date to noon to prevent timezone skipping (e.g. Jan 31 -> Mar 3)
@@ -726,6 +726,20 @@ export const deleteTransactionsBulk = async (transactionIds: string[]): Promise<
         }
     } catch (error) {
         console.error("Erro ao deletar transações em massa:", error);
+        throw error;
+    }
+};
+
+export const updateTransactionsBulkMember = async (transactionIds: string[], userIdGasto: string): Promise<void> => {
+    try {
+        const batch = writeBatch(db);
+        transactionIds.forEach(id => {
+            const ref = doc(db, "transactions", id);
+            batch.update(ref, { user_id_gasto: userIdGasto, updated_at: new Date() });
+        });
+        await batch.commit();
+    } catch (error) {
+        console.error("Error bulk updating members:", error);
         throw error;
     }
 };

@@ -13,6 +13,7 @@ interface CsvImporterProps {
     cards: Card[];
     onSuccess: () => void;
     trigger?: React.ReactNode;
+    monthReference?: Date; // Optional to avoid breaking other usages, but recommended
 }
 
 interface ImportedItem {
@@ -28,14 +29,15 @@ interface ImportedItem {
     numero_parcelas?: number;
 }
 
-export function CsvImporter({ cards, onSuccess, trigger }: CsvImporterProps) {
+export function CsvImporter({ cards, onSuccess, trigger, monthReference }: CsvImporterProps) {
     const { user } = useAuth();
     const [open, setOpen] = useState(false);
     const [selectedCardId, setSelectedCardId] = useState<string>("");
     const [file, setFile] = useState<File | null>(null);
     const [items, setItems] = useState<ImportedItem[]>([]);
-    const [usePurchaseDate, setUsePurchaseDate] = useState(true);
-    const [generateFuture, setGenerateFuture] = useState(false);
+    const [usePurchaseDate, setUsePurchaseDate] = useState(false); // Default false for Invoice Import
+    const [generateFuture, setGenerateFuture] = useState(true); // Default true for convenience
+    const [generatePast, setGeneratePast] = useState(false); // Default false (safety)
     const [step, setStep] = useState<"upload" | "preview" | "importing">("upload");
     const [error, setError] = useState<string | null>(null);
 
@@ -230,10 +232,20 @@ export function CsvImporter({ cards, onSuccess, trigger }: CsvImporterProps) {
                         let finalValor = valor;
                         let finalTipo = TransactionType.VARIAVEL;
 
-                        // Se for negativo, converte para positivo e marca como renda
                         if (valor < 0) {
                             finalValor = Math.abs(valor);
                             finalTipo = TransactionType.RENDA;
+                        }
+
+                        // CONTEXT-AWARE DATE OVERRIDE (User Request)
+                        // If monthReference is provided AND it is an installment > 1/1
+                        // We force the date to be in the Selected Month
+                        if (monthReference && numero_parcelas && numero_parcelas > 1 && dateObj) {
+                            const refDate = new Date(monthReference);
+                            const originalDay = dateObj.getDate();
+                            // Force Month/Year to Reference. 
+                            // Keep original Day.
+                            dateObj = new Date(refDate.getFullYear(), refDate.getMonth(), originalDay, 12, 0, 0);
                         }
 
                         return {
@@ -331,7 +343,8 @@ export function CsvImporter({ cards, onSuccess, trigger }: CsvImporterProps) {
                     // status defaults to completed
                 }, {
                     generate_future_installments: generateFuture,
-                    use_purchase_date_logic: usePurchaseDate
+                    use_purchase_date_logic: usePurchaseDate,
+                    backfill_past_installments: generatePast
                 });
             }
 
@@ -469,21 +482,42 @@ export function CsvImporter({ cards, onSuccess, trigger }: CsvImporterProps) {
                                                 />
                                             </td>
                                             <td className="p-3">
-                                                {format(
-                                                    (usePurchaseDate && item.parcela_atual && item.parcela_atual > 1)
-                                                        ? addMonths(item.data, item.parcela_atual - 1)
-                                                        : item.data,
-                                                    "dd/MM/yyyy"
-                                                )}
-                                                {usePurchaseDate && item.parcela_atual && item.parcela_atual > 1 && (
-                                                    <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded ml-2" title="Data recalculada com base na parcela">
-                                                        Ajustado
+                                                {format(item.data, "dd/MM/yyyy")}
+                                                {monthReference && item.parcelado && (item.numero_parcelas || 0) > 1 && (
+                                                    <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded ml-2" title="Data ajustada para o mês selecionado">
+                                                        Mês Atual
                                                     </span>
                                                 )}
                                             </td>
                                             <td className="p-3 font-medium text-slate-900">{item.descricao}</td>
                                             <td className="p-3 text-slate-500 text-xs">
-                                                {item.parcelado ? `${item.parcela_atual}/${item.numero_parcelas}` : "-"}
+                                                <div className="flex items-center gap-1">
+                                                    <input
+                                                        type="number"
+                                                        className="w-8 h-6 text-center border rounded p-0 text-xs"
+                                                        value={item.parcela_atual || ""}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            setItems(prev => prev.map(i => i.id === item.id ? { ...i, parcela_atual: isNaN(val) ? undefined : val, parcelado: (isNaN(val) ? (i.numero_parcelas && i.numero_parcelas > 1) : true) } : i));
+                                                        }}
+                                                        placeholder="1"
+                                                    />
+                                                    <span>/</span>
+                                                    <input
+                                                        type="number"
+                                                        className="w-8 h-6 text-center border rounded p-0 text-xs"
+                                                        value={item.numero_parcelas || ""}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            setItems(prev => prev.map(i => i.id === item.id ? {
+                                                                ...i,
+                                                                numero_parcelas: isNaN(val) ? undefined : val,
+                                                                parcelado: !isNaN(val) && val > 1
+                                                            } : i));
+                                                        }}
+                                                        placeholder="1"
+                                                    />
+                                                </div>
                                             </td>
                                             <td className={`p-3 font-medium ${item.tipo === TransactionType.RENDA ? "text-green-600" : "text-red-600"}`}>
                                                 {item.tipo === TransactionType.RENDA ? "+" : "-"} R$ {item.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -517,6 +551,20 @@ export function CsvImporter({ cards, onSuccess, trigger }: CsvImporterProps) {
                             />
                             <label htmlFor="generateFuture" className="text-sm text-slate-700 cursor-pointer select-none">
                                 <strong>Gerar parcelas futuras restantes?</strong> (Importar Fatura Mensal e projetar meses seguintes automaticamente)
+                            </label>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-2">
+                            <input
+                                type="checkbox"
+                                id="generatePast"
+                                checked={generatePast}
+                                onChange={(e) => setGeneratePast(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label htmlFor="generatePast" className="text-sm text-slate-700 cursor-pointer select-none">
+                                <strong>Gerar parcelas passadas?</strong> (Ex: Importar parcela 2/4 e criar automaticamente a 1/4 no mês anterior)
+                                <div className="text-xs text-amber-600 mt-1">⚠️ Cuidado: Se você já importou a parcela 1 anteriormente, não marque isso (gera duplicidade).</div>
                             </label>
                         </div>
                     </div>

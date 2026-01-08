@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { getCard, getTransactionsByCard } from "@/services/financeService";
-import { Card, Transaction, CategoryLabels } from "@/types";
+import { Card, Transaction, CategoryLabels, TransactionType } from "@/types";
 import { calcularMesFatura, obterMesAtual } from "@/lib/invoiceUtils";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ArrowLeft, CreditCard, Calendar, Users } from "lucide-react";
@@ -143,7 +143,7 @@ export default function CardInvoicePage() {
         ? transactions
         : transactions.filter(t => t.user_id_gasto === filterMember || t.user_id_criador === filterMember);
 
-    const totalInvoice = transactions.reduce((acc, t) => acc + t.valor, 0);
+    const totalInvoice = transactions.reduce((acc, t) => acc + (t.tipo === TransactionType.RENDA ? -t.valor : t.valor), 0);
 
     if (!user) return null;
     if (!card && loading) return <div className="p-8 text-center text-slate-600">Carregando cartão...</div>;
@@ -209,7 +209,7 @@ export default function CardInvoicePage() {
                         <div className="space-y-1">
                             <p className="text-sm text-slate-600">Total da Fatura {filterMember !== 'all' ? `(${filterMember})` : ''}</p>
                             <p className="text-3xl font-bold text-slate-900">
-                                R$ {filteredTransactions.reduce((acc, t) => acc + t.valor, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                R$ {filteredTransactions.reduce((acc, t) => acc + (t.tipo === TransactionType.RENDA ? -t.valor : t.valor), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                             </p>
                         </div>
                         <div className={`px-3 py-1 rounded-full text-sm font-medium ${totalInvoice > 0 ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
@@ -280,8 +280,8 @@ export default function CardInvoicePage() {
                                         </div>
                                         <div className="text-right flex flex-col items-end gap-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-bold text-slate-900">
-                                                    R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                                <p className={`font-bold ${t.tipo === TransactionType.RENDA ? "text-green-600" : "text-slate-900"}`}>
+                                                    {t.tipo === TransactionType.RENDA ? "+ " : ""}R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                                                 </p>
                                                 {t.parcelado && (
                                                     <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expandedTransactionId === t.id ? 'rotate-90' : ''}`} />
