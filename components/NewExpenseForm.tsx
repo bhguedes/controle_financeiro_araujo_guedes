@@ -243,14 +243,14 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
         // Se for CONTA_FIXA, marca automaticamente como recorrente
         const isRecurring = data.tipo === TransactionType.CONTA_FIXA;
 
-        // Sanitize undefined values (Firestore rejects undefined)
+        // Sanitize undefined values (Firestore rejects undefined, but addTransaction handles cleanup)
         const sanitizedData = {
             ...data,
-            user_id_gasto: data.user_id_gasto ?? null,
-            card_id: data.card_id ?? null,
-            account_id: data.account_id ?? null,
+            user_id_gasto: data.user_id_gasto ?? undefined,
+            card_id: data.card_id ?? undefined,
+            account_id: data.account_id ?? undefined,
             parcelado: data.parcelado ?? false,
-            numero_parcelas: data.numero_parcelas ?? null,
+            numero_parcelas: data.numero_parcelas ?? undefined,
         };
 
         onSubmit({
