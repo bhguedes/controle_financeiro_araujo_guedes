@@ -498,7 +498,7 @@ export function CsvImporter({ cards, onSuccess, trigger, monthReference }: CsvIm
                                                         value={item.parcela_atual || ""}
                                                         onChange={(e) => {
                                                             const val = parseInt(e.target.value);
-                                                            setItems(prev => prev.map(i => i.id === item.id ? { ...i, parcela_atual: isNaN(val) ? undefined : val, parcelado: (isNaN(val) ? (i.numero_parcelas && i.numero_parcelas > 1) : true) } : i));
+                                                            setItems(prev => prev.map(i => i.id === item.id ? { ...i, parcela_atual: isNaN(val) ? undefined : val, parcelado: (isNaN(val) ? ((i.numero_parcelas ?? 0) > 1) : true) } : i));
                                                         }}
                                                         placeholder="1"
                                                     />
