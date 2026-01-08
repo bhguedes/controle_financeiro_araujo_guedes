@@ -444,7 +444,7 @@ export default function DespesasPage() {
                 </div>
 
                 {/* Filtros e Controles de Visualização */}
-                <div className="flex flex-col gap-4 mb-6 sticky top-0 z-10 bg-slate-50 py-2">
+                <div className="flex flex-col gap-4 mb-6 sticky top-0 z-50 bg-slate-50 py-2">
                     {/* Row 1: Filters Card, Member, Sort */}
                     <div className="flex flex-col md:flex-row gap-2">
                         <div className="flex items-center gap-2 bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex-1">

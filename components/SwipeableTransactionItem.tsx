@@ -62,7 +62,34 @@ export function SwipeableTransactionItem({
     return (
         <div className="relative overflow-hidden mb-2 rounded-xl bg-slate-100 group">
             {/* Background Actions Layer - MOBILE ONLY */}
-            {/* ... */}
+            {/* Background Actions Layer - MOBILE ONLY */}
+            <div className="absolute inset-0 flex flex-row-reverse items-center h-full md:hidden">
+                {/* Delete */}
+                <button
+                    onClick={() => onDelete(item)}
+                    className="h-full w-[60px] bg-red-500 hover:bg-red-600 flex items-center justify-center text-white transition-colors"
+                >
+                    <Trash2 className="h-5 w-5" />
+                </button>
+
+                {/* Edit */}
+                <button
+                    onClick={() => onEdit(item)}
+                    className="h-full w-[60px] bg-blue-500 hover:bg-blue-600 flex items-center justify-center text-white transition-colors"
+                >
+                    <Edit2 className="h-5 w-5" />
+                </button>
+
+                {/* Assign Member (Only for Cards) */}
+                {showAssign && (
+                    <button
+                        onClick={() => onAssign(item)}
+                        className="h-full w-[60px] bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center text-white transition-colors"
+                    >
+                        {item.user_id_gasto ? <User className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+                    </button>
+                )}
+            </div>
 
             {/* Foreground Content Layer */}
             <motion.div
