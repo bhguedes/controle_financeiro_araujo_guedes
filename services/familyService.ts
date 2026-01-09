@@ -256,7 +256,8 @@ export const acceptInvitation = async (
                         });
 
                         // Método 2: users_assigned (Mantendo para compatibilidade com UI de membros)
-                        const memberName = invitation.role_label || invitation.invitee_name || "Membro da Família";
+                        // FIX: Priorizar o NOME da pessoa, não o parentesco/role
+                        const memberName = invitation.invitee_name || invitation.role_label || "Membro da Família";
                         await addCardMember(cardId, memberName);
                     } catch (err) {
                         console.error(`Erro ao adicionar membro ao cartão ${cardId}:`, err);

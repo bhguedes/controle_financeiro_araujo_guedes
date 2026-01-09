@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, ArrowLeft, CreditCard, Calendar, Users } from "lucide-react";
 import { format, addMonths, subMonths, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { getMemberColor } from "@/lib/utils";
 
 export default function CardInvoicePage() {
     const { user } = useAuth();
@@ -241,68 +242,80 @@ export default function CardInvoicePage() {
                         </div>
                     ) : (
                         <div className="divide-y divide-slate-100">
-                            {filteredTransactions.map(t => (
-                                <div key={t.id} className="group">
-                                    <div
-                                        onClick={() => t.parcelado && toggleExpand(t.id)}
-                                        className={`p-4 hover:bg-slate-50 transition-colors flex justify-between items-center ${t.parcelado ? 'cursor-pointer' : ''}`}
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            <div className={`p-2 rounded-full mt-1 ${t.parcelado ? 'bg-blue-100' : 'bg-emerald-100'}`}>
-                                                <span className="text-lg" role="img" aria-label="Icon">
-                                                    {t.parcelado ? '📅' : '💰'}
-                                                </span>
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-medium text-slate-900">{t.descricao}</p>
-                                                    {/* Badges */}
-                                                    {t.parcelado ? (
-                                                        <span className="text-[10px] uppercase font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full tracking-wide">
-                                                            Parcelado ({t.parcela_atual}/{t.numero_parcelas})
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] uppercase font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full tracking-wide">
-                                                            À vista
-                                                        </span>
-                                                    )}
-                                                </div>
+                            {filteredTransactions.map(t => {
+                                // Resolve Member Name and Color
+                                const memberId = t.user_id_gasto;
+                                const member = memberId ? card.users_assigned?.find(u => u.id === memberId) : null;
+                                const memberName = member ? member.nome : (memberId ? "Membro" : "Você");
+                                const memberColor = memberId ? getMemberColor(memberName) : null;
 
-                                                <div className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
-                                                    <span>{format(t.data, "dd/MM", { locale: ptBR })}</span>
-                                                    <span>•</span>
-                                                    <span>{CategoryLabels[t.categoria]}</span>
-                                                    <span className="text-xs text-slate-400">
-                                                        (Por: {t.user_id_gasto ? (card.users_assigned?.find(m => m.id === t.user_id_gasto)?.nome || "Membro") : "Você"})
+                                return (
+                                    <div key={t.id} className="group">
+                                        <div
+                                            onClick={() => t.parcelado && toggleExpand(t.id)}
+                                            className={`p-4 hover:bg-slate-50 transition-colors flex justify-between items-center ${t.parcelado ? 'cursor-pointer' : ''}`}
+                                            style={{
+                                                borderLeftColor: memberColor || 'transparent',
+                                                borderLeftWidth: memberColor ? '4px' : '0px',
+                                                paddingLeft: memberColor ? '12px' : '16px'
+                                            }}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className={`p-2 rounded-full mt-1 ${t.parcelado ? 'bg-blue-100' : 'bg-emerald-100'}`}>
+                                                    <span className="text-lg" role="img" aria-label="Icon">
+                                                        {t.parcelado ? '📅' : '💰'}
                                                     </span>
                                                 </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-medium text-slate-900">{t.descricao}</p>
+                                                        {/* Badges */}
+                                                        {t.parcelado ? (
+                                                            <span className="text-[10px] uppercase font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full tracking-wide">
+                                                                Parcelado ({t.parcela_atual}/{t.numero_parcelas})
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] uppercase font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full tracking-wide">
+                                                                À vista
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
+                                                        <span>{format(t.data, "dd/MM", { locale: ptBR })}</span>
+                                                        <span>•</span>
+                                                        <span>{CategoryLabels[t.categoria]}</span>
+                                                        <span className="text-xs text-slate-400">
+                                                            (Por: <span style={{ color: memberColor || undefined, fontWeight: memberColor ? 600 : 400 }}>{memberName}</span>)
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="text-right flex flex-col items-end gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <p className={`font-bold ${t.tipo === TransactionType.RENDA ? "text-green-600" : "text-slate-900"}`}>
-                                                    {t.tipo === TransactionType.RENDA ? "+ " : ""}R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                                                </p>
-                                                {t.parcelado && (
-                                                    <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expandedTransactionId === t.id ? 'rotate-90' : ''}`} />
+                                            <div className="text-right flex flex-col items-end gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <p className={`font-bold ${t.tipo === TransactionType.RENDA ? "text-green-600" : "text-slate-900"}`}>
+                                                        {t.tipo === TransactionType.RENDA ? "+ " : ""}R$ {t.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    {t.parcelado && (
+                                                        <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expandedTransactionId === t.id ? 'rotate-90' : ''}`} />
+                                                    )}
+                                                </div>
+                                                {t.is_recurring && (
+                                                    <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                        🔄 Recorrente
+                                                    </span>
                                                 )}
                                             </div>
-                                            {t.is_recurring && (
-                                                <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                                    🔄 Recorrente
-                                                </span>
-                                            )}
                                         </div>
-                                    </div>
 
-                                    {/* Expandable Content for Installments */}
-                                    {expandedTransactionId === t.id && t.parcelado && (
-                                        <div className="px-14 pb-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                            {renderFutureInstallments(t)}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                                        {/* Expandable Content for Installments */}
+                                        {expandedTransactionId === t.id && t.parcelado && (
+                                            <div className="px-14 pb-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {renderFutureInstallments(t)}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                         </div>
                     )}
                 </div>
