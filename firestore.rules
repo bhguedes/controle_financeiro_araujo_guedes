@@ -21,9 +21,34 @@ service cloud.firestore {
     // Compartilhado com o usuário
     // IMPORTANTE: .hasAny() é frequentemente mais robusto para regras de lista que o operador 'in'
     // quando combinado com .get()
+    // Compartilhado com o usuário
     function isShared(data) {
       return isSignedIn() && 
              data.get('shared_with_uids', []).hasAny([request.auth.uid]);
+    }
+
+    // --- REGRAS DE AUTO-INCLUSÃO (JOIN) ---
+    // Permite que um usuário adicione a si mesmo em uma lista (ex: aceitar convite)
+    function isSelfJoin(field) {
+      let oldList = resource.data.get(field, []);
+      let newList = request.resource.data[field];
+      return isSignedIn() &&
+             newList.size() == oldList.size() + 1 && // Apenas 1 adicionado
+             newList.hasAll(oldList) && // Ninguém removido
+             newList.hasAny([request.auth.uid]); // O adicionado sou eu
+    }
+
+    function canJoinFamily() {
+       let diff = request.resource.data.diff(resource.data);
+       return diff.affectedKeys().hasOnly(['member_ids', 'updated_at']) &&
+              isSelfJoin('member_ids');
+    }
+
+    function canJoinShared() {
+       let diff = request.resource.data.diff(resource.data);
+       // Permite alterar 'is_shared' para true se estiver se adicionando
+       return diff.affectedKeys().hasOnly(['shared_with_uids', 'updated_at', 'is_shared']) &&
+              isSelfJoin('shared_with_uids');
     }
 
     // --- REGRAS POR COLEÇÃO ---
@@ -39,7 +64,11 @@ service cloud.firestore {
     match /families/{familyId} {
       allow read: if isSignedIn() && (resource.data.owner_id == request.auth.uid || request.auth.uid in resource.data.member_ids);
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (resource.data.owner_id == request.auth.uid || request.auth.uid in resource.data.member_ids);
+      allow update: if isSignedIn() && (
+        resource.data.owner_id == request.auth.uid || 
+        request.auth.uid in resource.data.member_ids ||
+        canJoinFamily() // Permite aceitar convite
+      );
     }
     
     match /family_invitations/{invitationId} {
@@ -50,12 +79,22 @@ service cloud.firestore {
     match /bank_accounts/{accountId} {
       allow read: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
       allow write: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow update: if isSignedIn() && (
+        isOwner(resource.data) || 
+        isShared(resource.data) ||
+        canJoinShared() // Permite aceitar convite
+      );
       allow create: if isSignedIn();
     }
 
     match /investments/{investmentId} {
       allow read: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
       allow write: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
+        allow update: if isSignedIn() && (
+        isOwner(resource.data) || 
+        isShared(resource.data) ||
+        canJoinShared() // Permite aceitar convite
+      );
       allow create: if isSignedIn();
     }
 
@@ -68,6 +107,11 @@ service cloud.firestore {
     match /cards/{cardId} {
       allow read: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
       allow write: if isSignedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow update: if isSignedIn() && (
+        isOwner(resource.data) || 
+        isShared(resource.data) ||
+        canJoinShared() // Permite aceitar convite
+      );
       allow create: if isSignedIn();
       
       match /users_assigned/{memberId} { 
