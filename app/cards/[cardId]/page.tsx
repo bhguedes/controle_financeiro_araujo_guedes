@@ -315,7 +315,8 @@ export default function CardInvoicePage() {
                                             </div>
                                         )}
                                     </div>
-                                ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
