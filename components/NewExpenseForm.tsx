@@ -148,11 +148,26 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
             setStep(0);
             setDirection(0);
             if (initialData) {
-                // Ensure data is Date object
-                const data = initialData.data instanceof Date ? initialData.data : new Date(initialData.data as any);
+                // Ensure date is set to noon to avoid timezone shifts
+                let safeDate = new Date();
+                if (initialData.data) {
+                    const sourceDate = new Date(initialData.data);
+                    // Conversion: Take UTC components (which hold the "real" date 00:00) and make them Local Noon
+                    safeDate = new Date(
+                        sourceDate.getUTCFullYear(),
+                        sourceDate.getUTCMonth(),
+                        sourceDate.getUTCDate(),
+                        12, 0, 0, 0
+                    );
+                }
+
                 reset({
                     ...initialData,
-                    data,
+                    data: safeDate,
+                    // Ensure optional fields are handled correctly
+                    // ... rest of init logic
+                    parcelado: initialData.parcelado ?? false,
+                    card_id: initialData.card_id || undefined,
                 } as ExpenseFormValues);
             } else {
                 reset({
@@ -241,11 +256,18 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
         );
 
         // Se for CONTA_FIXA, marca automaticamente como recorrente
+        // Force date to noon to avoid timezone overlap (UTC vs Local)
+        // This ensures that "Jan 6 00:00" doesn't become "Jan 5 21:00"
+        const safeDate = new Date(data.data);
+        safeDate.setHours(12, 0, 0, 0);
+
+        // Se for CONTA_FIXA, marca automaticamente como recorrente
         const isRecurring = data.tipo === TransactionType.CONTA_FIXA;
 
         // Sanitize undefined values (Firestore rejects undefined, but addTransaction handles cleanup)
         const sanitizedData = {
             ...data,
+            data: safeDate,
             user_id_gasto: data.user_id_gasto ?? undefined,
             card_id: data.card_id ?? undefined,
             account_id: data.account_id ?? undefined,
@@ -343,7 +365,16 @@ export function NewExpenseForm({ cards, accounts = [], onSubmit, trigger, initia
                                                 type="date"
                                                 className="text-lg h-14 text-center bg-white border-slate-200 rounded-xl"
                                                 value={field.value ? format(field.value, "yyyy-MM-dd") : ""}
-                                                onChange={(e) => field.onChange(e.target.valueAsDate)}
+                                                onChange={(e) => {
+                                                    const date = e.target.valueAsDate;
+                                                    if (date) {
+                                                        // Fix: Input returns UTC midnight. Convert to Local Noon to avoid timezone shifts.
+                                                        const adjusted = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0);
+                                                        field.onChange(adjusted);
+                                                    } else {
+                                                        field.onChange(date);
+                                                    }
+                                                }}
                                             />
                                         )}
                                     />

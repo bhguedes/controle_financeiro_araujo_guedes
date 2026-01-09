@@ -690,8 +690,13 @@ export const updateTransaction = async (
 ): Promise<void> => {
     try {
         const transactionRef = doc(db, "transactions", transactionId);
+
+        // Remove undefined fields to prevent Firestore errors
+        const payload: any = { ...transactionData };
+        Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
         await updateDoc(transactionRef, {
-            ...transactionData,
+            ...payload,
             updated_at: Timestamp.now(),
         });
     } catch (error) {
